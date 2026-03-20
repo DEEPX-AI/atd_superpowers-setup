@@ -77,7 +77,7 @@ fi
 PROJECT_DIR="$(cd "$1" && pwd)"
 HOOKS_DIR="$PROJECT_DIR/.github/hooks"
 SCRIPTS_DIR="$HOOKS_DIR/scripts"
-SKILLS_DIR="$HOME/.copilot/skills/superpowers"
+SKILLS_DIR="$HOME/.copilot/skills"
 
 echo ""
 echo "🦸 Superpowers Hook — VS Code Copilot Chat 설치"
@@ -101,7 +101,7 @@ cat > "$SCRIPTS_DIR/session-start.sh" << 'EOF'
 # VS Code: stdout JSON (hookSpecificOutput.additionalContext)
 # CLI: sessionStart output은 무시됨 (해가 없음)
 
-SKILLS_DIR="${HOME}/.copilot/skills/superpowers"
+SKILLS_DIR="${HOME}/.copilot/skills"
 SKILL_FILE="${SKILLS_DIR}/using-superpowers/SKILL.md"
 
 if [ ! -f "$SKILL_FILE" ]; then
@@ -227,7 +227,7 @@ HARD-GATE VIOLATION: 설계(brainstorming)가 완료되지 않았습니다.
 
 코드를 작성하기 전에 반드시:
 1. brainstorming 스킬을 실행하세요:
-   Read: ~/.copilot/skills/superpowers/brainstorming/SKILL.md
+   Read: ~/.copilot/skills/brainstorming/SKILL.md
 2. 설계가 승인되면 아래 파일을 생성하여 잠금을 해제하세요:
    echo '{"brainstormingDone": true}' > /tmp/superpowers-state.json
 

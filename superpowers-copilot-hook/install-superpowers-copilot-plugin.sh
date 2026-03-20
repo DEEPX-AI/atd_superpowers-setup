@@ -4,7 +4,7 @@
 # obra/superpowers 스킬을 Copilot CLI에 설치합니다
 # 
 # 작동 방식:
-#   1. superpowers 스킬 파일을 ~/.copilot/skills/superpowers/ 에 설치
+#   1. superpowers 스킬 파일을 ~/.copilot/skills/ 에 개별 symlink로 설치
 #   2. ~/.copilot/copilot-instructions.md 에 스킬 로딩 지시 추가
 #   3. code-reviewer 에이전트를 ~/.copilot/agents/ 에 설치
 #
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 COPILOT_DIR="$HOME/.copilot"
-SKILLS_DIR="$COPILOT_DIR/skills/superpowers"
+SKILLS_DIR="$COPILOT_DIR/skills"
 AGENTS_DIR="$COPILOT_DIR/agents"
 INSTRUCTIONS_FILE="$COPILOT_DIR/copilot-instructions.md"
 CACHE_DIR="$COPILOT_DIR/marketplace-cache/dwaintr-superpowers-copilot"
@@ -29,12 +29,25 @@ if [ "${1:-}" = "uninstall" ]; then
   echo "===================================="
   echo ""
 
-  if [ -L "$SKILLS_DIR" ]; then
-    rm "$SKILLS_DIR" && echo "✅ 삭제: $SKILLS_DIR (symlink)"
-  elif [ -d "$SKILLS_DIR" ]; then
-    rm -rf "$SKILLS_DIR" && echo "✅ 삭제: $SKILLS_DIR"
+  removed=0
+  for skill_link in "$SKILLS_DIR"/*/; do
+    skill_name=$(basename "$skill_link")
+    if [ -L "${SKILLS_DIR}/${skill_name}" ]; then
+      target=$(readlink "${SKILLS_DIR}/${skill_name}")
+      if [[ "$target" == *"superpowers"* ]]; then
+        rm "${SKILLS_DIR}/${skill_name}"
+        removed=$((removed + 1))
+      fi
+    fi
+  done
+  if [ $removed -gt 0 ]; then
+    echo "✅ 삭제: ${removed}개 스킬 symlink (from $SKILLS_DIR)"
   else
-    echo "ℹ️  스킬 디렉토리 없음 (이미 제거됨)"
+    echo "ℹ️  Superpowers 스킬 symlink 없음 (이미 제거됨)"
+  fi
+  # 기존 단일 superpowers symlink도 정리
+  if [ -L "$SKILLS_DIR/superpowers" ]; then
+    rm "$SKILLS_DIR/superpowers" && echo "✅ 삭제: $SKILLS_DIR/superpowers (legacy symlink)"
   fi
 
   if [ -f "$AGENTS_DIR/code-reviewer.md" ]; then
@@ -92,19 +105,27 @@ echo "✅ 플러그인 준비 완료"
 echo ""
 echo "🔗 스킬 연결 중..."
 
-if [ -L "$SKILLS_DIR" ]; then
-  rm "$SKILLS_DIR"
-fi
-if [ -d "$SKILLS_DIR" ]; then
-  echo "   ℹ️  기존 스킬 디렉토리 백업: ${SKILLS_DIR}.bak"
-  mv "$SKILLS_DIR" "${SKILLS_DIR}.bak"
+mkdir -p "$SKILLS_DIR"
+
+# 기존 단일 superpowers symlink가 있으면 제거
+if [ -L "$SKILLS_DIR/superpowers" ]; then
+  rm "$SKILLS_DIR/superpowers"
+  echo "   ℹ️  기존 superpowers symlink 제거"
 fi
 
-ln -s "$PLUGIN_DIR/skills" "$SKILLS_DIR"
-
-SKILL_COUNT=$(find -L "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
-echo "✅ 스킬 연결: $SKILLS_DIR → $PLUGIN_DIR/skills"
-echo "   총 ${SKILL_COUNT}개 스킬 사용 가능"
+# 각 스킬을 개별 symlink로 생성 (CLI가 ~/.copilot/skills/ 바로 아래에서 탐색)
+SKILL_COUNT=0
+for skill_dir in "$PLUGIN_DIR/skills"/*/; do
+  skill_name=$(basename "$skill_dir")
+  link_path="$SKILLS_DIR/$skill_name"
+  if [ -L "$link_path" ]; then
+    rm "$link_path"
+  fi
+  ln -s "$skill_dir" "$link_path"
+  SKILL_COUNT=$((SKILL_COUNT + 1))
+done
+echo "✅ 스킬 연결: ${SKILL_COUNT}개 개별 symlink → $SKILLS_DIR/"
+echo "   (CLI가 ~/.copilot/skills/ 에서 직접 탐색)"
 
 # ── Step 3: 에이전트 설치 ─────────────────────────────────────
 echo ""
@@ -163,7 +184,7 @@ fi
 echo ""
 echo "🎉 Superpowers 설치 완료!"
 echo ""
-echo "   스킬:    $SKILLS_DIR (${SKILL_COUNT}개)"
+echo "   스킬:    $SKILLS_DIR/ (${SKILL_COUNT}개 개별 symlink)"
 echo "   에이전트: $AGENTS_DIR/code-reviewer.md"
 echo "   지시문:  $INSTRUCTIONS_FILE"
 echo ""

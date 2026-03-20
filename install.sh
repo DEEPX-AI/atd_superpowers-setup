@@ -114,7 +114,7 @@ case "$COMMAND" in
     ;;&
   all | copilot)
     echo "   [Copilot]"
-    echo "   - ~/.copilot/skills/superpowers/ (14개 스킬)"
+    echo "   - ~/.copilot/skills/ (14개 스킬, 개별 symlink)"
     echo "   - $PROJECT/.github/extensions/superpowers-enforcer/ (CLI Extension)"
     echo "   - $PROJECT/.github/hooks/ (셸 Hook — VS Code + CLI 공통)"
     ;;

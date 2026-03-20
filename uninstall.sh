@@ -141,9 +141,9 @@ case "$COMMAND" in
   all | copilot)
     echo "   [Copilot]"
     if $WITH_PLUGIN; then
-      echo "   - ~/.copilot/skills/superpowers/ 제거됨"
+      echo "   - ~/.copilot/skills/ 스킬 symlink 제거됨"
     else
-      echo "   - ~/.copilot/skills/superpowers/ 유지됨 (다른 프로젝트에서 사용 중일 수 있음)"
+      echo "   - ~/.copilot/skills/ 스킬 symlink 유지됨 (다른 프로젝트에서 사용 중일 수 있음)"
       echo "     삭제하려면: bash $(basename "$0") $COMMAND $PROJECT --with-plugin"
     fi
     echo "   - .github/extensions/superpowers-enforcer/ 제거됨"

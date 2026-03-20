@@ -58,7 +58,7 @@ if [ -z "$COMMAND" ]; then
 fi
 PROJECT_DIR="$(cd "$1" && pwd)"
 EXTENSIONS_DIR="$PROJECT_DIR/.github/extensions/superpowers-enforcer"
-SKILLS_DIR="$HOME/.copilot/skills/superpowers"
+SKILLS_DIR="$HOME/.copilot/skills"
 
 echo ""
 echo "🦸 Superpowers Hook 강제화 — Extension 설치"
@@ -107,7 +107,7 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 
 // ── 설정 ────────────────────────────────────────────────────
-const SKILLS_BASE = join(process.env.HOME ?? "/root", ".copilot/skills/superpowers");
+const SKILLS_BASE = join(process.env.HOME ?? "/root", ".copilot/skills");
 const CONFIG_PATH = join(import.meta.dirname ?? ".", "config.json");
 
 function loadConfig() {
@@ -183,7 +183,7 @@ const session = await joinSession({
         return {};
       }
 
-      await session.log("🦸 Superpowers Extension 활성화", { ephemeral: true });
+      await session.log(`🦸 [EXTENSION] Superpowers Extension 활성화 | 스킬: ${SKILLS_BASE} | HARD-GATE: ${ENFORCE_HARD_GATES ? "ON" : "OFF"}`);
 
       // using-superpowers 스킬 전체를 초기 컨텍스트로 주입
       return {
@@ -412,7 +412,7 @@ const session = await joinSession({
   ],
 });
 
-await session.log("🦸 Superpowers Enforcer 준비 완료", { ephemeral: true });
+await session.log("🦸 [EXTENSION] Superpowers Enforcer 준비 완료 | 커스텀 도구 3종 등록됨");
 EXTENSION_EOF
 
 echo "✅ extension.mjs 생성: $EXTENSIONS_DIR/extension.mjs"

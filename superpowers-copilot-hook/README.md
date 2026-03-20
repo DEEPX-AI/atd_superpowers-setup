@@ -57,7 +57,7 @@ bash install-superpowers-copilot-plugin.sh
 모든 Hook의 전제 조건입니다. 이것부터 실행해야 합니다.
 
 설치되는 것:
-- `~/.copilot/skills/superpowers/` → 14개 스킬 파일 (symlink)
+- `~/.copilot/skills/` → 14개 스킬 파일 (개별 symlink)
 - `~/.copilot/agents/code-reviewer.md` → 코드 리뷰 에이전트
 - `~/.copilot/copilot-instructions.md` → 스킬 로딩 지시 + 한국어 응답 설정
 
@@ -278,7 +278,7 @@ bash install-superpowers-copilot-vscode-hooks.sh uninstall /path/to/project
 
 | 스크립트 | 제거 대상 |
 |---|---|
-| `install-superpowers-copilot-plugin.sh uninstall` | `~/.copilot/skills/superpowers`, `~/.copilot/agents/code-reviewer.md`, `copilot-instructions.md` 블록 |
+| `install-superpowers-copilot-plugin.sh uninstall` | `~/.copilot/skills/` 스킬 symlink들, `~/.copilot/agents/code-reviewer.md`, `copilot-instructions.md` 블록 |
 | `install-superpowers-copilot-cli-extensions.sh uninstall` | `.github/extensions/superpowers-enforcer/` |
 | `install-superpowers-copilot-vscode-hooks.sh uninstall` | `.github/hooks/` |
 
@@ -292,7 +292,7 @@ rm -rf 프로젝트/.github/extensions/superpowers-enforcer/
 rm -rf 프로젝트/.github/hooks/
 
 # 플러그인 전역 제거
-rm -f ~/.copilot/skills/superpowers
+rm -f ~/.copilot/skills/brainstorming  # 등 개별 symlink 제거
 rm -f ~/.copilot/agents/code-reviewer.md
 # ~/.copilot/copilot-instructions.md에서 superpowers 블록 수동 제거
 ```

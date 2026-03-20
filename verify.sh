@@ -39,12 +39,12 @@ echo "   프로젝트: $PROJECT_DIR"
 # ============================================================
 section "[공통] 스킬 디렉토리"
 
-COPILOT_SKILLS="$HOME/.copilot/skills/superpowers"
+COPILOT_SKILLS="$HOME/.copilot/skills"
 AGENT_SKILLS="$HOME/.agents/skills/superpowers"
 
-# Copilot 스킬
-if [ -d "$COPILOT_SKILLS" ] || [ -L "$COPILOT_SKILLS" ]; then
-  SKILL_COUNT=$(find -L "$COPILOT_SKILLS" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
+# Copilot 스킬 (개별 symlink 방식: ~/.copilot/skills/brainstorming/ 등)
+if [ -d "$COPILOT_SKILLS" ]; then
+  SKILL_COUNT=$(find -L "$COPILOT_SKILLS" -maxdepth 2 -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
   if [ "$SKILL_COUNT" -ge 14 ]; then
     ok "Copilot 스킬 ${SKILL_COUNT}개: $COPILOT_SKILLS"
   else
