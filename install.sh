@@ -115,9 +115,9 @@ case "$COMMAND" in
   all | copilot)
     echo "   [Copilot]"
     echo "   - ~/.copilot/skills/superpowers/ (14개 스킬)"
-    echo "   - .github/extensions/superpowers-enforcer/ (CLI Hook)"
-    echo "   - .github/hooks/ (VS Code Hook)"
-    echo "   - .vscode/settings.json (chat.hooks.enabled: true)"
+    echo "   - $PROJECT/.github/extensions/superpowers-enforcer/ (CLI Hook)"
+    echo "   - $PROJECT/.github/hooks/ (VS Code Hook)"
+    echo "   - $PROJECT/.vscode/settings.json (chat.hooks.enabled: true)"
     ;;
 esac
 

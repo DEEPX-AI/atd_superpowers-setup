@@ -13,7 +13,9 @@
 #   stderr          → 모델에게 컨텍스트로 전달
 #
 # 활성화 조건 (VS Code settings.json):
-#   "chat.hooks.enabled": true
+#
+# hooks.json이 .github/hooks/ 에 있으면 VS Code가 자동으로 로드합니다.
+# 별도의 settings.json 설정이 필요 없습니다.
 #
 # 사용법:
 #   bash install-superpowers-copilot-vscode-hooks.sh [프로젝트 경로]
@@ -44,17 +46,20 @@ if [ "$COMMAND" = "uninstall" ]; then
     echo "ℹ️  $HOOKS_DIR — 없음 (이미 제거됨)"
   fi
 
-  if [ -f "$VSCODE_SETTINGS" ] && grep -q "chat.hooks.enabled" "$VSCODE_SETTINGS" 2>/dev/null; then
+  if [ -f "$VSCODE_SETTINGS" ] && grep -q "hookFilesLocations" "$VSCODE_SETTINGS" 2>/dev/null; then
     python3 -c "
 import json
 with open('$VSCODE_SETTINGS') as f:
     d = json.load(f)
-d.pop('chat.hooks.enabled', None)
-with open('$VSCODE_SETTINGS', 'w') as f:
-    json.dump(d, f, indent=2, ensure_ascii=False)
-    f.write('\n')
+d.pop('chat.hookFilesLocations', None)
+if d:
+    with open('$VSCODE_SETTINGS', 'w') as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+        f.write('\n')
+else:
+    import os; os.remove('$VSCODE_SETTINGS')
 "
-    echo "✅ .vscode/settings.json 에서 chat.hooks.enabled 제거"
+    echo "✅ .vscode/settings.json 에서 chat.hookFilesLocations 제거"
   fi
 
   echo ""
@@ -103,10 +108,10 @@ if [ ! -f "$SKILL_FILE" ]; then
   exit 0
 fi
 
-# JSON으로 additionalContext 반환 (VS Code hook output 포맷)
-SKILL_CONTENT=$(cat "$SKILL_FILE")
-printf '{"systemMessage": "=== SUPERPOWERS FRAMEWORK ACTIVE ===\n\n%s\n\nSkills path: %s\nRead the relevant SKILL.md before starting any task.\n=== END SUPERPOWERS ==="}' \
-  "$SKILL_CONTENT" "$SKILLS_DIR"
+# VS Code 공식 포맷: hookSpecificOutput.additionalContext
+SKILL_CONTENT=$(cat "$SKILL_FILE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))" 2>/dev/null)
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"=== SUPERPOWERS FRAMEWORK ACTIVE ===\nSkills path: %s\nRead the relevant SKILL.md before starting any task.\n=== END SUPERPOWERS ==="}}' \
+  "$SKILLS_DIR"
 EOF
 
 # ── 스크립트 2: pre-tool-use.sh ──────────────────────────────
@@ -117,23 +122,22 @@ cat > "$SCRIPTS_DIR/pre-tool-use.sh" << 'SCRIPT_EOF'
 # VS Code hook input (stdin으로 들어옴):
 # {
 #   "timestamp": "...",
-#   "cwd": "...",
+#   "cwd": "/path/to/workspace",
 #   "sessionId": "...",
 #   "hookEventName": "PreToolUse",
 #   "transcript_path": "...",
-#   "toolName": "...",
-#   "toolInput": { ... }
+#   "tool_name": "create_file",
+#   "tool_input": { "filePath": "..." }
 # }
 #
-# 차단하려면: exit 2
-# 경고만:    stderr에 출력 후 exit 0
+# 차단: exit 2 (stderr → 모델에게 컨텍스트)
+# 허용: exit 0
 
 INPUT=$(cat)
 
-TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('toolName',''))" 2>/dev/null || echo "")
-TOOL_INPUT=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('toolInput',{})))" 2>/dev/null || echo "{}")
+TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_name', d.get('toolName','')))" 2>/dev/null || echo "")
+TOOL_INPUT=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('tool_input', d.get('toolInput',{}))))" 2>/dev/null || echo "{}")
 CWD=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('cwd',''))" 2>/dev/null || echo "")
-TRANSCRIPT=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('transcript_path',''))" 2>/dev/null || echo "")
 
 # ── 설정 파일 로드 ─────────────────────────────────────────
 CONFIG_FILE="${CWD}/.github/hooks/config.json"
@@ -152,7 +156,7 @@ if [ "$ENFORCE_GATES" = "false" ]; then
 fi
 
 # ── 코드 파일 작성 도구 확인 ──────────────────────────────
-CODE_WRITE_TOOLS="create edit str_replace_based_edit_tool"
+CODE_WRITE_TOOLS="create_file replace_string_in_file multi_replace_string_in_file edit_notebook_file create edit str_replace_based_edit_tool"
 IS_CODE_WRITE=false
 for t in $CODE_WRITE_TOOLS; do
   if [ "$TOOL_NAME" = "$t" ]; then
@@ -169,7 +173,7 @@ fi
 FILE_PATH=$(echo "$TOOL_INPUT" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-print(d.get('path', d.get('file_path', '')))
+print(d.get('filePath', d.get('path', d.get('file_path', ''))))
 " 2>/dev/null || echo "")
 
 # ── 테스트 파일은 항상 허용 (TDD RED 단계) ───────────────
@@ -178,7 +182,7 @@ if echo "$FILE_PATH" | grep -qE '\.(test|spec)\.[jt]sx?$|/tests?/|/__tests__/'; 
 fi
 
 # ── 브레인스토밍 완료 여부 확인 ──────────────────────────
-STATE_FILE="/tmp/superpowers-${TOOL_NAME}-state-$(echo "$CWD" | md5sum | cut -c1-8).json"
+STATE_FILE="/tmp/superpowers-edit-state-$(echo "$CWD" | md5sum | cut -c1-8).json"
 BRAINSTORMING_DONE=false
 if [ -f "$STATE_FILE" ]; then
   BRAINSTORMING_DONE=$(python3 -c "
@@ -189,25 +193,8 @@ print(str(d.get('brainstormingDone', False)).lower())
 " 2>/dev/null || echo "false")
 fi
 
-# ── 트랜스크립트에서 현재 작업 유형 감지 ─────────────────
-IS_BUILD_TASK=false
-if [ -f "$TRANSCRIPT" ]; then
-  RECENT_PROMPTS=$(python3 -c "
-import json, sys
-with open('$TRANSCRIPT') as f:
-    lines = f.readlines()[-20:]  # 최근 20줄
-content = ' '.join(lines).lower()
-import re
-if re.search(r\"let.?s build|add feature|implement|create|만들어|추가|구현\", content):
-    print('true')
-else:
-    print('false')
-" 2>/dev/null || echo "false")
-  IS_BUILD_TASK="$RECENT_PROMPTS"
-fi
-
-# ── HARD-GATE 적용 ────────────────────────────────────────
-if [ "$IS_BUILD_TASK" = "true" ] && [ "$BRAINSTORMING_DONE" = "false" ]; then
+# ── HARD-GATE 적용 (코드 작성 도구 호출 자체가 트리거) ───
+if [ "$BRAINSTORMING_DONE" = "false" ]; then
   # stderr → VS Code가 모델에게 컨텍스트로 전달
   cat >&2 << 'DENY_MSG'
 HARD-GATE VIOLATION: 설계(brainstorming)가 완료되지 않았습니다.
@@ -262,16 +249,24 @@ if [ "$ENABLE_LINT" = "false" ]; then
   exit 0
 fi
 
-TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('toolName',''))" 2>/dev/null || echo "")
-if [ "$TOOL_NAME" != "edit" ] && [ "$TOOL_NAME" != "str_replace_based_edit_tool" ]; then
+TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_name', d.get('toolName','')))" 2>/dev/null || echo "")
+EDIT_TOOLS="create_file replace_string_in_file multi_replace_string_in_file edit_notebook_file edit str_replace_based_edit_tool"
+IS_EDIT=false
+for t in $EDIT_TOOLS; do
+  if [ "$TOOL_NAME" = "$t" ]; then
+    IS_EDIT=true
+    break
+  fi
+done
+if [ "$IS_EDIT" = "false" ]; then
   exit 0
 fi
 
 FILE_PATH=$(echo "$INPUT" | python3 -c "
 import sys,json
 d = json.load(sys.stdin)
-ti = d.get('toolInput', {})
-print(ti.get('path', ti.get('file_path', '')))
+ti = d.get('tool_input', d.get('toolInput', {}))
+print(ti.get('filePath', ti.get('path', ti.get('file_path', ''))))
 " 2>/dev/null || echo "")
 
 if [ -z "$FILE_PATH" ]; then
@@ -349,25 +344,6 @@ chmod +x "$SCRIPTS_DIR/post-tool-use.sh"
 
 echo "✅ 스크립트 권한 설정 완료"
 
-# ── VS Code settings 안내 ────────────────────────────────────
-VSCODE_SETTINGS="$PROJECT_DIR/.vscode/settings.json"
-mkdir -p "$(dirname "$VSCODE_SETTINGS")"
-
-if [ -f "$VSCODE_SETTINGS" ]; then
-  if ! grep -q "chat.hooks.enabled" "$VSCODE_SETTINGS" 2>/dev/null; then
-    echo ""
-    echo "⚠️  VS Code settings.json에 아래를 추가해야 Hook이 활성화됩니다:"
-    echo '   "chat.hooks.enabled": true'
-  fi
-else
-  cat > "$VSCODE_SETTINGS" << 'SETTINGS_EOF'
-{
-  "chat.hooks.enabled": true
-}
-SETTINGS_EOF
-  echo "✅ .vscode/settings.json 생성 (chat.hooks.enabled: true)"
-fi
-
 # ── .gitignore 업데이트 ──────────────────────────────────────
 GITIGNORE="$PROJECT_DIR/.gitignore"
 GITIGNORE_ENTRIES=(
@@ -376,7 +352,6 @@ GITIGNORE_ENTRIES=(
   ".github/hooks/scripts/session-start.sh"
   ".github/hooks/scripts/pre-tool-use.sh"
   ".github/hooks/scripts/post-tool-use.sh"
-  ".vscode/settings.json"
 )
 
 echo ""
@@ -415,10 +390,11 @@ echo "       ├── session-start.sh  ← 스킬 컨텍스트 주입"
 echo "       ├── pre-tool-use.sh   ← HARD-GATE 차단 (exit 2)"
 echo "       └── post-tool-use.sh  ← 린트 자동 실행"
 echo ""
-echo "   ✅ VS Code 활성화 확인:"
-echo "   .vscode/settings.json → chat.hooks.enabled: true"
+echo "   ✅ VS Code 자동 로드:"
+echo "   .github/hooks/hooks.json 이 있으면 VS Code가 자동으로 Hook을 로드합니다."
+echo "   별도 settings.json 설정 불필요."
 echo ""
-echo "   ⚡ CLI vs VS Code Hook 차이:"
-echo "   CLI:    extension.mjs JS 프로세스 (permissionDecision: 'deny')"
-echo "   VS Code: 셸 스크립트 (exit 2 로 차단)"
-echo "   포맷:    hooks.json 은 두 환경 모두 호환"
+echo "   ⚡ CLI vs VS Code Hook:"
+echo "   CLI:    extension.mjs JS 프로세스 + .github/hooks/hooks.json 공용"
+echo "   VS Code: .github/hooks/hooks.json 자동 로드 (v1.109.3+)"
+echo "   차단:    exit 2 로 tool 실행 차단"

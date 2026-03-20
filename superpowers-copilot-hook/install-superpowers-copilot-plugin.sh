@@ -19,6 +19,7 @@ SKILLS_DIR="$COPILOT_DIR/skills/superpowers"
 AGENTS_DIR="$COPILOT_DIR/agents"
 INSTRUCTIONS_FILE="$COPILOT_DIR/copilot-instructions.md"
 CACHE_DIR="$COPILOT_DIR/marketplace-cache/dwaintr-superpowers-copilot"
+# 실제 레포 구조: marketplace-cache/.../plugins/superpowers/skills/
 PLUGIN_DIR="$CACHE_DIR/plugins/superpowers"
 
 # ── uninstall 처리 ───────────────────────────────────────────
@@ -101,7 +102,7 @@ fi
 
 ln -s "$PLUGIN_DIR/skills" "$SKILLS_DIR"
 
-SKILL_COUNT=$(find "$SKILLS_DIR" -name "SKILL.md" | wc -l | tr -d ' ')
+SKILL_COUNT=$(find -L "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
 echo "✅ 스킬 연결: $SKILLS_DIR → $PLUGIN_DIR/skills"
 echo "   총 ${SKILL_COUNT}개 스킬 사용 가능"
 
