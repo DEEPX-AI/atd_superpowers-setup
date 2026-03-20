@@ -1,0 +1,22 @@
+
+# BEGIN superpowers-cline
+docs/superpowers/.gitkeep
+docs/superpowers/plans/
+docs/superpowers/specs/
+/AGENTS.md
+/.clinerules
+# END superpowers-cline
+
+# BEGIN superpowers-copilot-cli-hooks
+.github/extensions/superpowers-enforcer/extension.mjs
+.github/extensions/superpowers-enforcer/config.json
+# END superpowers-copilot-cli-hooks
+
+# BEGIN superpowers-copilot-vscode-hooks
+.github/hooks/hooks.json
+.github/hooks/config.json
+.github/hooks/scripts/session-start.sh
+.github/hooks/scripts/pre-tool-use.sh
+.github/hooks/scripts/post-tool-use.sh
+.vscode/settings.json
+# END superpowers-copilot-vscode-hooks

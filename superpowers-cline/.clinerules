@@ -1,0 +1,122 @@
+# Superpowers for Cline
+# Port of obra/superpowers skills framework
+# Compatible with: Cline (VS Code extension)
+
+<!-- superpowers-installed -->
+
+## Superpowers Skills
+
+You have Superpowers skills installed. Before any task, check if a relevant skill applies.
+If there is even a 1% chance a skill might be relevant, read and apply that skill.
+
+Available skills (in ~/.agents/skills/superpowers/):
+  brainstorming, test-driven-development, systematic-debugging, writing-plans,
+  executing-plans, subagent-driven-development, dispatching-parallel-agents,
+  requesting-code-review, receiving-code-review, verification-before-completion,
+  using-git-worktrees, finishing-a-development-branch, writing-skills, using-superpowers
+
+Priority order:
+  1. Process skills first (brainstorming, systematic-debugging) — these determine HOW to approach the task
+  2. Implementation skills second — these guide execution
+
+---
+
+## Skill Invocation Rules
+
+### How to load a skill (Cline method)
+Cline does NOT have a `Skill` tool. Instead:
+  - Read the skill file: ~/.agents/skills/superpowers/<skill-name>/SKILL.md
+  - Announce: "Using [skill] to [purpose]"
+  - Follow the skill's checklist/process EXACTLY
+
+### Trigger → Skill mapping
+
+| User says                                          | Invoke skill first              |
+|----------------------------------------------------|----------------------------------|
+| "let's build", "add feature", "create", "design"  | brainstorming                   |
+| "fix bug", "debug", "why is X broken"              | systematic-debugging            |
+| "implement", "write code" (after plan exists)      | test-driven-development         |
+| "make a plan", "how should we implement"           | writing-plans                   |
+| "execute plan", "follow the plan"                  | executing-plans                 |
+| "review my code", "check this PR"                  | requesting-code-review          |
+| "I got review feedback"                            | receiving-code-review           |
+| "are we done?", "is this complete?"                | verification-before-completion  |
+| "start a new feature branch"                       | using-git-worktrees             |
+| "finish this branch", "merge ready?"               | finishing-a-development-branch  |
+
+---
+
+## HARD GATES (Non-negotiable)
+
+### Gate 1: No code before brainstorming
+NEVER write implementation code, scaffold a project, or create files
+until brainstorming is complete AND design is approved by user.
+This applies to EVERY request, regardless of perceived simplicity.
+
+### Gate 2: No implementation before a failing test (TDD)
+NEVER write production code without a failing test first.
+If code was written before the test → DELETE it. Start over.
+No exceptions without explicit user permission.
+
+### Gate 3: No fixes without root cause investigation
+NEVER propose a fix before completing Phase 1 (root cause investigation)
+of systematic-debugging. "Quick fixes" are forbidden.
+
+### Gate 4: No deployment before verification
+NEVER mark a task complete without running verification-before-completion.
+
+---
+
+## Red Flags — STOP and check for skills
+
+If you catch yourself thinking any of the following, STOP and invoke a skill:
+
+| Thought                                    | Action                                    |
+|--------------------------------------------|-------------------------------------------|
+| "This is too simple to need a design"      | Read brainstorming/SKILL.md anyway        |
+| "I'll write tests after"                   | Read test-driven-development/SKILL.md     |
+| "Just try this fix and see"                | Read systematic-debugging/SKILL.md        |
+| "I know what the skill says"               | Skills evolve. Read current version.      |
+| "This doesn't need a formal skill"         | If a skill exists, use it.               |
+| "Let me explore the codebase first"        | Skills tell you HOW to explore.           |
+| "I need more context before invoking"      | Skill check comes BEFORE clarifications.  |
+
+---
+
+## Workflow Sequence (Normal Feature Development)
+
+```
+1. brainstorming
+      ↓ (design approved by user)
+2. writing-plans
+      ↓ (plan saved to docs/superpowers/plans/)
+3. using-git-worktrees (create worktree for feature)
+      ↓
+4. test-driven-development (RED → GREEN → REFACTOR per task)
+      ↓
+5. requesting-code-review
+      ↓
+6. receiving-code-review (apply feedback)
+      ↓
+7. verification-before-completion
+      ↓
+8. finishing-a-development-branch
+```
+
+---
+
+## File Conventions
+
+| Artifact               | Path                                              |
+|------------------------|---------------------------------------------------|
+| Design docs (specs)    | docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md |
+| Implementation plans   | docs/superpowers/plans/YYYY-MM-DD-<feature>.md    |
+| Skill files            | ~/.agents/skills/superpowers/<skill-name>/SKILL.md |
+
+---
+
+## User Instructions Override
+
+User's explicit instructions (in AGENTS.md, direct requests) always take precedence over skills.
+If user says "skip TDD for this", follow user's instruction.
+Skills override default behavior, not user intent.
