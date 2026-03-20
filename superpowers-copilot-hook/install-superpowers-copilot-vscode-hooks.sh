@@ -97,8 +97,9 @@ mkdir -p "$HOOKS_DIR" "$SCRIPTS_DIR"
 # ── 스크립트 1: session-start.sh ─────────────────────────────
 cat > "$SCRIPTS_DIR/session-start.sh" << 'EOF'
 #!/usr/bin/env bash
-# onSessionStart: using-superpowers 스킬을 초기 컨텍스트에 주입
-# stdout → 모델 컨텍스트로 전달됨
+# SessionStart / sessionStart: using-superpowers 스킬을 초기 컨텍스트에 주입
+# VS Code: stdout JSON (hookSpecificOutput.additionalContext)
+# CLI: sessionStart output은 무시됨 (해가 없음)
 
 SKILLS_DIR="${HOME}/.copilot/skills/superpowers"
 SKILL_FILE="${SKILLS_DIR}/using-superpowers/SKILL.md"
@@ -110,34 +111,52 @@ fi
 
 # VS Code 공식 포맷: hookSpecificOutput.additionalContext
 SKILL_CONTENT=$(cat "$SKILL_FILE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))" 2>/dev/null)
-printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"=== SUPERPOWERS FRAMEWORK ACTIVE ===\nSkills path: %s\nRead the relevant SKILL.md before starting any task.\n=== END SUPERPOWERS ==="}}' \
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"=== SUPERPOWERS FRAMEWORK ACTIVE ===\nSkills path: %s\nRead the relevant SKILL.md before starting any task.\n\n[Language] 모든 응답, 질문, 설명, 설계 제안은 한국어로 작성하세요. 코드 식별자(변수명, 함수명)는 영어를 유지합니다.\n=== END SUPERPOWERS ==="}}' \
   "$SKILLS_DIR"
 EOF
 
 # ── 스크립트 2: pre-tool-use.sh ──────────────────────────────
 cat > "$SCRIPTS_DIR/pre-tool-use.sh" << 'SCRIPT_EOF'
 #!/usr/bin/env bash
-# onPreToolUse: HARD-GATE 강제화
+# PreToolUse / preToolUse: HARD-GATE 강제화
 #
-# VS Code hook input (stdin으로 들어옴):
-# {
-#   "timestamp": "...",
-#   "cwd": "/path/to/workspace",
-#   "sessionId": "...",
-#   "hookEventName": "PreToolUse",
-#   "transcript_path": "...",
-#   "tool_name": "create_file",
-#   "tool_input": { "filePath": "..." }
-# }
+# VS Code hook input:
+#   { "tool_name": "create_file", "tool_input": { "filePath": "..." }, "cwd": "..." }
+#   차단: exit 2 + stderr
 #
-# 차단: exit 2 (stderr → 모델에게 컨텍스트)
-# 허용: exit 0
+# Copilot CLI hook input:
+#   { "toolName": "edit", "toolArgs": "{\"path\":\"...\"}", "cwd": "..." }
+#   차단: stdout {"permissionDecision":"deny","permissionDecisionReason":"..."}
 
 INPUT=$(cat)
 
+# ── 환경 감지: VS Code vs CLI ────────────────────
+IS_CLI=$(echo "$INPUT" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print('true' if 'toolArgs' in d else 'false')
+" 2>/dev/null || echo "false")
+
 TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_name', d.get('toolName','')))" 2>/dev/null || echo "")
-TOOL_INPUT=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('tool_input', d.get('toolInput',{}))))" 2>/dev/null || echo "{}")
 CWD=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('cwd',''))" 2>/dev/null || echo "")
+
+# toolInput 파싱: VS Code은 object, CLI는 JSON string
+TOOL_INPUT=$(echo "$INPUT" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+ti = d.get('tool_input', None)
+if ti is not None:
+    print(json.dumps(ti))
+else:
+    args = d.get('toolArgs', '{}')
+    if isinstance(args, str):
+        try:
+            print(json.dumps(json.loads(args)))
+        except:
+            print('{}')
+    else:
+        print(json.dumps(args))
+" 2>/dev/null || echo "{}")
 
 # ── 설정 파일 로드 ─────────────────────────────────────────
 CONFIG_FILE="${CWD}/.github/hooks/config.json"
@@ -195,8 +214,15 @@ fi
 
 # ── HARD-GATE 적용 (코드 작성 도구 호출 자체가 트리거) ───
 if [ "$BRAINSTORMING_DONE" = "false" ]; then
-  # stderr → VS Code가 모델에게 컨텍스트로 전달
-  cat >&2 << 'DENY_MSG'
+  DENY_REASON="HARD-GATE VIOLATION: brainstorming not completed. Run brainstorming skill first, then set brainstormingDone:true in state file."
+
+  if [ "$IS_CLI" = "true" ]; then
+    # CLI: stdout JSON으로 차단
+    echo "{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$DENY_REASON\"}"
+    exit 0
+  else
+    # VS Code: stderr + exit 2로 차단
+    cat >&2 << 'DENY_MSG'
 HARD-GATE VIOLATION: 설계(brainstorming)가 완료되지 않았습니다.
 
 코드를 작성하기 전에 반드시:
@@ -207,9 +233,8 @@ HARD-GATE VIOLATION: 설계(brainstorming)가 완료되지 않았습니다.
 
 또는 config.json에서 enforceHardGates: false 로 설정하면 차단이 비활성화됩니다.
 DENY_MSG
-
-  # exit 2 → VS Code가 tool 실행을 차단
-  exit 2
+    exit 2
+  fi
 fi
 
 exit 0
@@ -250,7 +275,7 @@ if [ "$ENABLE_LINT" = "false" ]; then
 fi
 
 TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_name', d.get('toolName','')))" 2>/dev/null || echo "")
-EDIT_TOOLS="create_file replace_string_in_file multi_replace_string_in_file edit_notebook_file edit str_replace_based_edit_tool"
+EDIT_TOOLS="create_file replace_string_in_file multi_replace_string_in_file edit_notebook_file edit str_replace_based_edit_tool create"
 IS_EDIT=false
 for t in $EDIT_TOOLS; do
   if [ "$TOOL_NAME" = "$t" ]; then
@@ -262,10 +287,16 @@ if [ "$IS_EDIT" = "false" ]; then
   exit 0
 fi
 
+# 파일 경로 추출: VS Code (tool_input object) / CLI (toolArgs JSON string)
 FILE_PATH=$(echo "$INPUT" | python3 -c "
 import sys,json
 d = json.load(sys.stdin)
-ti = d.get('tool_input', d.get('toolInput', {}))
+ti = d.get('tool_input', None)
+if ti is None:
+    args = d.get('toolArgs', '{}')
+    ti = json.loads(args) if isinstance(args, str) else (args or {})
+elif not isinstance(ti, dict):
+    ti = {}
 print(ti.get('filePath', ti.get('path', ti.get('file_path', ''))))
 " 2>/dev/null || echo "")
 
@@ -318,6 +349,27 @@ cat > "$HOOKS_DIR/hooks.json" << 'HOOKS_EOF'
         "type": "command",
         "command": ".github/hooks/scripts/post-tool-use.sh",
         "timeout": 30
+      }
+    ],
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/scripts/session-start.sh",
+        "timeoutSec": 15
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/scripts/pre-tool-use.sh",
+        "timeoutSec": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/scripts/post-tool-use.sh",
+        "timeoutSec": 30
       }
     ]
   }

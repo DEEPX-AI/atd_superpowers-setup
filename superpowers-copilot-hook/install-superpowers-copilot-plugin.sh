@@ -149,6 +149,12 @@ Priority order:
 
 "Let's build X" → brainstorming first, then implementation skills.
 "Fix this bug" → systematic-debugging first, then domain-specific skills.
+
+## Language Preference
+
+Always respond in Korean (한국어). All questions, explanations, design proposals,
+and code comments should be in Korean. Code identifiers (variable names, function names)
+remain in English.
 INSTRUCTIONS
   echo "✅ copilot-instructions.md 업데이트 완료"
 fi

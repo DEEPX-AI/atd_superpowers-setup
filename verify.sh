@@ -136,7 +136,7 @@ readFileSync('$EXTENSION_MJS', 'utf-8');
   done
 else
   fail "extension.mjs 없음: $EXTENSION_MJS"
-  info "수정: bash install-superpowers-copilot-cli-hooks.sh $PROJECT_DIR"
+  info "수정: bash install-superpowers-copilot-cli-extensions.sh $PROJECT_DIR"
 fi
 
 if [ -f "$EXTENSION_CFG" ]; then
@@ -172,9 +172,17 @@ if [ -f "$HOOKS_JSON" ]; then
 
   for event in SessionStart PreToolUse PostToolUse; do
     if grep -q "$event" "$HOOKS_JSON"; then
-      ok "hook 이벤트: $event"
+      ok "hook 이벤트 (VS Code): $event"
     else
-      fail "hook 이벤트 없음: $event"
+      fail "hook 이벤트 없음 (VS Code): $event"
+    fi
+  done
+
+  for event in sessionStart preToolUse postToolUse; do
+    if grep -q "\"$event\"" "$HOOKS_JSON"; then
+      ok "hook 이벤트 (CLI): $event"
+    else
+      fail "hook 이벤트 없음 (CLI): $event"
     fi
   done
 else
@@ -207,23 +215,37 @@ if [ -f "$SCRIPTS_DIR/session-start.sh" ] && [ -x "$SCRIPTS_DIR/session-start.sh
   fi
 fi
 
-# pre-tool-use.sh 테스트: brainstorming 미완료 → HARD-GATE 차단 (exit 2 기대)
+# pre-tool-use.sh 테스트: brainstorming 미완료 → HARD-GATE 차단
 if [ -f "$SCRIPTS_DIR/pre-tool-use.sh" ] && [ -x "$SCRIPTS_DIR/pre-tool-use.sh" ]; then
   # state 파일 제거 (brainstormingDone=false 보장)
   STATE_FILE="/tmp/superpowers-edit-state-$(echo "$PROJECT_DIR" | md5sum | cut -c1-8).json"
   rm -f "$STATE_FILE"
 
-  TEST_INPUT='{"tool_name":"create_file","tool_input":{"filePath":"src/index.ts"},"cwd":"'"$PROJECT_DIR"'","hookEventName":"PreToolUse"}'
-  echo "$TEST_INPUT" | bash "$SCRIPTS_DIR/pre-tool-use.sh" 2>/dev/null
+  # VS Code 형식 테스트 (tool_name + tool_input object → exit 2)
+  TEST_INPUT_VSCODE='{"tool_name":"create_file","tool_input":{"filePath":"src/index.ts"},"cwd":"'"$PROJECT_DIR"'","hookEventName":"PreToolUse"}'
+  echo "$TEST_INPUT_VSCODE" | bash "$SCRIPTS_DIR/pre-tool-use.sh" 2>/dev/null
   EXIT_CODE=$?
 
   if [ "$EXIT_CODE" -eq 2 ]; then
-    ok "pre-tool-use.sh HARD-GATE 차단 확인 (brainstorming 미완료 → exit 2)"
+    ok "pre-tool-use.sh VS Code HARD-GATE 차단 (exit 2)"
   elif [ "$EXIT_CODE" -eq 0 ]; then
-    fail "pre-tool-use.sh HARD-GATE 미작동 (exit 0, 기대: exit 2)"
+    fail "pre-tool-use.sh VS Code HARD-GATE 미작동 (exit 0, 기대: exit 2)"
     info "config.json enforceHardGates 확인"
   else
-    warn "pre-tool-use.sh exit code: $EXIT_CODE (기대: 2)"
+    warn "pre-tool-use.sh VS Code exit code: $EXIT_CODE (기대: 2)"
+  fi
+
+  # CLI 형식 테스트 (toolName + toolArgs JSON string → permissionDecision deny)
+  TEST_INPUT_CLI='{"toolName":"edit","toolArgs":"{\"path\":\"src/index.ts\"}","cwd":"'"$PROJECT_DIR"'","timestamp":1704614600000}'
+  CLI_OUTPUT=$(echo "$TEST_INPUT_CLI" | bash "$SCRIPTS_DIR/pre-tool-use.sh" 2>/dev/null)
+  CLI_EXIT=$?
+
+  if echo "$CLI_OUTPUT" | grep -q '"permissionDecision":"deny"'; then
+    ok "pre-tool-use.sh CLI HARD-GATE 차단 (permissionDecision:deny)"
+  elif [ "$CLI_EXIT" -eq 0 ]; then
+    fail "pre-tool-use.sh CLI HARD-GATE 미작동 (deny 출력 없음)"
+  else
+    warn "pre-tool-use.sh CLI exit code: $CLI_EXIT (기대: 0 + deny JSON)"
   fi
 fi
 

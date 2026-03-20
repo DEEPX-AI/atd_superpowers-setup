@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CLINE_INSTALL="$SCRIPT_DIR/superpowers-cline/install-superpowers-cline.sh"
 COPILOT_PLUGIN="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-plugin.sh"
-COPILOT_CLI_HOOKS="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-cli-hooks.sh"
+COPILOT_CLI_HOOKS="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-cli-extensions.sh"
 COPILOT_VSCODE_HOOKS="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-vscode-hooks.sh"
 
 # ── 사용법 출력 ───────────────────────────────────────────────
@@ -69,13 +69,13 @@ install_copilot() {
 
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  [2/3] Superpowers Copilot CLI Hooks"
+  echo "  [2/3] Superpowers Copilot CLI Extensions"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   bash "$COPILOT_CLI_HOOKS" "$PROJECT"
 
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  [3/3] Superpowers Copilot VS Code Hooks"
+  echo "  [3/3] Superpowers Copilot VS Code Hooks (셸 Hook — VS Code + CLI 공통)"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   bash "$COPILOT_VSCODE_HOOKS" "$PROJECT"
 }
@@ -115,9 +115,8 @@ case "$COMMAND" in
   all | copilot)
     echo "   [Copilot]"
     echo "   - ~/.copilot/skills/superpowers/ (14개 스킬)"
-    echo "   - $PROJECT/.github/extensions/superpowers-enforcer/ (CLI Hook)"
-    echo "   - $PROJECT/.github/hooks/ (VS Code Hook)"
-    echo "   - $PROJECT/.vscode/settings.json (chat.hooks.enabled: true)"
+    echo "   - $PROJECT/.github/extensions/superpowers-enforcer/ (CLI Extension)"
+    echo "   - $PROJECT/.github/hooks/ (셸 Hook — VS Code + CLI 공통)"
     ;;
 esac
 

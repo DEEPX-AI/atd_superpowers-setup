@@ -13,9 +13,9 @@
 #      (프로젝트별 설정 오버라이드)
 #
 # 사용법:
-#   bash install-superpowers-copilot-cli-hooks.sh [프로젝트 경로]
-#   bash install-superpowers-copilot-cli-hooks.sh .              # 현재 디렉토리
-#   bash install-superpowers-copilot-cli-hooks.sh ~/my-project   # 특정 프로젝트
+#   bash install-superpowers-copilot-cli-extensions.sh [프로젝트 경로]
+#   bash install-superpowers-copilot-cli-extensions.sh .              # 현재 디렉토리
+#   bash install-superpowers-copilot-cli-extensions.sh ~/my-project   # 특정 프로젝트
 #
 # 참고: Copilot CLI Extension은 .mjs(ES Module)만 지원
 #       @github/copilot-sdk는 자동 resolve됨 (npm install 불필요)
@@ -141,7 +141,10 @@ const state = {
 };
 
 // ── HARD-GATE 감지: 설계 없이 코드 작성 시도 ────────────────
-const CODE_WRITE_TOOLS = new Set(["create", "edit", "str_replace_based_edit_tool"]);
+const CODE_WRITE_TOOLS = new Set([
+  "create", "edit", "str_replace_based_edit_tool",
+  "create_file", "replace_string_in_file", "multi_replace_string_in_file", "edit_notebook_file",
+]);
 
 const BUILD_TRIGGER_PATTERNS = [
   /let['"]s\s+build/i,
@@ -192,6 +195,8 @@ const session = await joinSession({
           "=== SKILL PATHS ===",
           `Skills are located at: ${SKILLS_BASE}`,
           "Read the relevant SKILL.md file before starting any task.",
+          "",
+          "[Language] 모든 응답, 질문, 설명, 설계 제안은 한국어로 작성하세요. 코드 식별자(변수명, 함수명)는 영어를 유지합니다.",
           "=== END SUPERPOWERS ===",
         ].join("\n"),
       };
@@ -258,8 +263,8 @@ const session = await joinSession({
         return { permissionDecision: "allow" };
       }
 
-      // build 작업이고 brainstorming이 완료되지 않은 경우 차단
-      if (state.currentTask === "build" && !state.brainstormingDone) {
+      // brainstorming이 완료되지 않은 경우 코드 작성 차단
+      if (!state.brainstormingDone) {
         state.gateViolations++;
         await session.log(
           `🚫 HARD-GATE 위반 #${state.gateViolations}: 설계 없이 코드 작성 시도`,
