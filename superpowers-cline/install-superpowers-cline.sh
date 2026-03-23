@@ -29,10 +29,54 @@ if [ "$COMMAND" = "uninstall" ]; then
   rm -rf "$TARGET_PROJECT/docs/superpowers" && echo "✅ 삭제: docs/superpowers/" || true
 
   if [ -L "$SKILLS_DIR" ]; then
-    echo "⚠️  $SKILLS_DIR 는 symlink입니다 (다른 도구와 공유 중일 수 있음)."
-    echo "   수동 제거: rm $SKILLS_DIR"
+    rm "$SKILLS_DIR" && echo "✅ 삭제: $SKILLS_DIR (symlink)"
   elif [ -d "$SKILLS_DIR" ]; then
     rm -rf "$SKILLS_DIR" && echo "✅ 삭제: $SKILLS_DIR"
+  fi
+
+  # 개별 스킬 디렉토리 정리 (~/.agents/skills/<skill-name>/ 형태)
+  AGENTS_SKILLS_BASE="$HOME/.agents/skills"
+  SUPERPOWERS_SKILL_NAMES=(
+    brainstorming
+    dispatching-parallel-agents
+    executing-plans
+    finishing-a-development-branch
+    receiving-code-review
+    requesting-code-review
+    subagent-driven-development
+    systematic-debugging
+    test-driven-development
+    using-git-worktrees
+    using-superpowers
+    verification-before-completion
+    writing-plans
+    writing-skills
+  )
+  # 존재하는 개별 스킬 목록 확인
+  existing_skills=()
+  for skill_name in "${SUPERPOWERS_SKILL_NAMES[@]}"; do
+    skill_path="$AGENTS_SKILLS_BASE/$skill_name"
+    if [ -L "$skill_path" ] || [ -d "$skill_path" ]; then
+      existing_skills+=("$skill_name")
+    fi
+  done
+  if [ ${#existing_skills[@]} -gt 0 ]; then
+    echo ""
+    echo "⚠️  다음 ${#existing_skills[@]}개 스킬 디렉토리가 $AGENTS_SKILLS_BASE 에 남아있습니다."
+    echo "   (다른 도구와 공유 중일 수 있음)"
+    for s in "${existing_skills[@]}"; do
+      echo "   - $s"
+    done
+    printf "   삭제하시겠습니까? [y/N] "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+      for skill_name in "${existing_skills[@]}"; do
+        rm -rf "$AGENTS_SKILLS_BASE/$skill_name"
+      done
+      echo "✅ 삭제: ${#existing_skills[@]}개 개별 스킬 디렉토리"
+    else
+      echo "⏭️  개별 스킬 디렉토리 유지"
+    fi
   fi
 
   echo ""

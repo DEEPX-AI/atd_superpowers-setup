@@ -30,7 +30,7 @@ usage() {
   echo "  bash $(basename "$0") copilot /path/to/project [--with-plugin]   # Copilot Hook 제거"
   echo ""
   echo "옵션:"
-  echo "  --with-plugin   전역 Copilot 플러그인도 함께 제거 (다른 프로젝트에 영향)"
+  echo "  --with-plugin  w 전역 Copilot 플러그인도 함께 제거 (다른 프로젝트에 영향)"
   echo ""
   exit 1
 }
