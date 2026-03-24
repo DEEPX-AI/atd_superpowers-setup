@@ -1,0 +1,41 @@
+<h2>로그인 API 구현 접근 방식</h2>
+<p class="subtitle">Node.js + Express + JWT + SQLite 기반 — 어떤 구조로 구현할까요?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>미니멀 플랫 구조</h3>
+      <p>라우터 파일에 비즈니스 로직을 직접 작성. 빠르고 간단하지만 확장성이 낮음.</p>
+      <ul style="margin-top:0.5rem;font-size:0.9rem;color:#666">
+        <li>파일 수 최소화 (3~4개)</li>
+        <li>작은 프로젝트에 적합</li>
+        <li>테스트 작성이 어려움</li>
+      </ul>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>레이어드 아키텍처 (추천)</h3>
+      <p>Route → Controller → Service → Repository 계층 분리. 관심사가 명확하고 테스트 친화적.</p>
+      <ul style="margin-top:0.5rem;font-size:0.9rem;color:#666">
+        <li>각 계층이 단일 책임을 가짐</li>
+        <li>서비스 로직을 독립적으로 테스트 가능</li>
+        <li>Express → Fastify 마이그레이션도 용이</li>
+      </ul>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Passport.js 기반</h3>
+      <p>passport-local 전략 사용. 추후 OAuth 확장이 쉽지만 현재 요구사항 대비 오버엔지니어링.</p>
+      <ul style="margin-top:0.5rem;font-size:0.9rem;color:#666">
+        <li>OAuth2 / 소셜 로그인 추가 시 유리</li>
+        <li>추상화 레이어가 추가됨</li>
+        <li>JWT only 용도엔 다소 무거움</li>
+      </ul>
+    </div>
+  </div>
+</div>

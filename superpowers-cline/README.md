@@ -180,7 +180,7 @@ Cline이 `brainstorming` 스킬을 자동으로 실행합니다.
 | 완료 검증 | ❌ "완성했습니다" 선언만 | 실제 테스트 + 시나리오 검증 후 선언 |
 | 결과물 | 다시 만들어야 할 수 있음 | 처음부터 의도에 맞게 |
 
-### Superpowers 작업 절차
+### 일반적인 워크플로우
 
 Superpowers가 설치되면 Cline은 아래 절차를 자동으로 따릅니다:
 
@@ -201,6 +201,18 @@ Superpowers가 설치되면 Cline은 아래 절차를 자동으로 따릅니다:
 
 6. 최종 검증        전체 작업 종료 전, 실제 시나리오와 테스트로 최종 검증
 ```
+
+### 강제성 수준 비교
+
+| 구성 | 적용 방식 | 차단 수준 | AI 무시 가능 여부 |
+|------|-----------|-----------|-------------------|
+| **Copilot CLI** (hooks + extension) | 셸 Hook + SDK Extension | OS 레벨 차단 | ❌ 무시 불가 |
+| **VS Code Copilot Chat** (hooks) | 셸 Hook | OS 레벨 차단 | ❌ 무시 불가 |
+| **Copilot CLI** (plugin만) | 텍스트 지시 | 소프트 가이드 | ⚠️ 무시 가능 |
+| **Cline** (.clinerules) | 텍스트 지시 | 소프트 가이드 | ⚠️ 무시 가능 |
+
+> Cline은 `.clinerules` 텍스트 지시 방식이므로, AI가 규칙을 무시할 수 있습니다.
+> 하드 차단이 필요하면 [superpowers-copilot-hook](../superpowers-copilot-hook/README.md)의 셸 Hook 방식을 사용하세요.
 
 ### 핵심 규칙
 
@@ -290,7 +302,7 @@ Cline이 자동으로 적절한 스킬을 읽도록 유도합니다.
 
 ---
 
-## 스킬 목록 & 사용 시점
+## 스킬 목록 (14개)
 
 | 스킬 | 사용 시점 |
 |------|-----------|

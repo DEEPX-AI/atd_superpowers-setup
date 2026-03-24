@@ -5,6 +5,24 @@ VS Code Copilot Chat과 Copilot CLI 모두 지원합니다.
 
 ---
 
+## 예시 산출물
+
+> 📖 **예시 세션 transcript**: [res/example_copilot_cli_session/session_export.md](./res/example_copilot_cli_session/session_export.md)  
+> 실제 Copilot CLI에서 `/share file`로 저장한 최신 세션 transcript 원본입니다.
+
+> 📝 **예시 spec + plan**: [res/example_superpowers_plan_and_spec/2026-03-24-login-api-design.md](./res/example_superpowers_plan_and_spec/2026-03-24-login-api-design.md), [res/example_superpowers_plan_and_spec/2026-03-24-login-api.md](./res/example_superpowers_plan_and_spec/2026-03-24-login-api.md)  
+> 최신 검증 세션에서 실제로 생성된 설계 문서와 구현 플랜입니다.
+
+> 🧠 **예시 brainstorm 화면**: [res/example_brainstorm_session/1353273-1774318201/approaches.html](./res/example_brainstorm_session/1353273-1774318201/approaches.html), [res/example_brainstorm_session/1353273-1774318201/architecture.html](./res/example_brainstorm_session/1353273-1774318201/architecture.html)  
+> 브라우저 기반 visual companion이 생성한 접근 방식 비교 화면과 아키텍처 화면입니다.
+
+> 🧾 **예시 audit log**: [res/example_copilot_cli_session/audit.jsonl](./res/example_copilot_cli_session/audit.jsonl)  
+> `userPromptSubmitted`, `preToolUse`, `postToolUse`, `sessionEnd` Hook 이벤트를 JSONL로 남긴 참고용 예시입니다.
+
+> 💡 사람에게 보여줄 기록은 transcript/spec/plan/brainstorm 화면을, 정책 추적과 후처리는 audit log를 기준으로 분리하는 것을 권장합니다.
+
+---
+
 ## 아키텍처 개요
 
 Copilot에는 두 가지 Hook 메커니즘이 있으며, 이 프로젝트는 **양쪽 모두** 설치합니다.
@@ -165,7 +183,7 @@ bash install-superpowers-copilot-cli-extensions.sh /path/to/project # CLI 확장
 | `superpowers_brainstorming_complete` | 에이전트가 직접 HARD-GATE 해제 (도구 호출) |
 | `superpowers_read_skill` | 스킬 파일을 에이전트가 직접 로드 |
 | `superpowers_status` | 세션 상태 조회 (게이트 상태, 위반 횟수 등) |
-| 인메모리 상태 | 세션 내 state 추적 (`brainstormingDone`, `gateViolations` 등) |
+| 인메모리 상태 | 세션 내 state 추적 (`brainstormingDone`, `specWritten`, `planWritten`, `tddStarted`, `gateViolations`) |
 
 ---
 
@@ -183,21 +201,18 @@ bash install-superpowers-copilot-cli-extensions.sh /path/to/project # CLI 확장
 | `edit` | CLI |
 | `str_replace_based_edit_tool` | CLI |
 
-> 테스트 파일 (`.test.`, `.spec.`, `/tests/`, `/__tests__/`)은 항상 허용됩니다.
+> 테스트 파일은 항상 허용되지 않습니다. `brainstorming -> spec -> plan` 이후에만 허용되며, non-test code는 그 뒤에 TDD가 시작된 상태여야 합니다.
 
 ---
 
 ## 강제성 수준 비교
 
-```
-강제성 강함 ←——————————————————————————→ 강제성 약함
-
-Copilot CLI           VS Code              Copilot CLI       Cline
-(hooks + extension)   (hooks)              (plugin만)        (.clinerules)
-셸 Hook + SDK         셸 Hook              텍스트 지시        텍스트 지시
-OS 레벨 차단           OS 레벨 차단          AI 무시 가능       AI 무시 가능
-AI 무시 불가            AI 무시 불가
-```
+| 구성 | 적용 방식 | 차단 수준 | AI 무시 가능 여부 |
+|------|-----------|-----------|-------------------|
+| **Copilot CLI** (hooks + extension) | 셸 Hook + SDK Extension | OS 레벨 차단 | ❌ 무시 불가 |
+| **VS Code Copilot Chat** (hooks) | 셸 Hook | OS 레벨 차단 | ❌ 무시 불가 |
+| **Copilot CLI** (plugin만) | 텍스트 지시 | 소프트 가이드 | ⚠️ 무시 가능 |
+| **Cline** (.clinerules) | 텍스트 지시 | 소프트 가이드 | ⚠️ 무시 가능 |
 
 ---
 
@@ -219,6 +234,73 @@ CLI (`extension.mjs` 옆)와 VS Code (`.github/hooks/` 안) 모두 동일한 설
 
 ---
 
+## 세션 기록 export 방법
+
+### 1. 현재 대화 세션을 Markdown으로 저장
+
+인터랙티브 세션 안에서 아래 명령을 실행합니다.
+
+```text
+/share file ./copilot-session.md
+```
+
+경로를 생략하면 현재 작업 디렉터리에 `copilot-session-<SESSION-ID>.md` 형태로 저장됩니다.
+
+### 2. 비대화식 실행 결과를 Markdown으로 저장
+
+반복 가능한 예시를 만들 때는 비대화식 실행이 가장 단순합니다.
+
+```bash
+copilot -p "Audit this project's dependencies for vulnerabilities" \
+    --allow-tool='shell(npm:*), shell(npx:*)' \
+    --share=./audit-report.md
+```
+
+### 3. raw session-state 직접 확인
+
+Copilot CLI는 세션 이력을 로컬에도 저장합니다.
+
+```text
+~/.copilot/session-state/<session-id>/
+├── events.jsonl
+├── workspace.yaml
+├── checkpoints/
+├── files/
+└── research/
+```
+
+문서 예시는 공식 export 경로를 우선 사용하고, 추가 분석이 필요할 때만 `events.jsonl`을 후처리하는 방식을 권장합니다.
+
+---
+
+## 최신 검증 결과
+
+최신 Copilot CLI 실세션 기준으로, 강화한 Hook/Extension 흐름은 이제 `brainstorming -> spec -> plan -> TDD -> verification` 체인을 실제로 밟는 예시를 만들 수 있습니다.
+
+| 항목 | 최신 Copilot Hook/Extension 결과 | 근거 |
+|------|----------------------------------|------|
+| brainstorming 진입 | ✅ 자동 트리거 | `brainstorming` 스킬 로드 |
+| visual companion 사용 | ✅ 동작 | `approaches.html`, `architecture.html` 생성 |
+| spec 문서 생성 | ✅ 생성 | `docs/superpowers/specs/2026-03-24-login-api-design.md` |
+| spec 리뷰 | ✅ 완료 | `spec-reviewer` 승인 |
+| plan 문서 생성 | ✅ 생성 | `docs/superpowers/plans/2026-03-24-login-api.md` |
+| plan 리뷰 | ✅ 병렬 청크 리뷰 | `plan-review-chunk1/2/3` 실행 |
+| TDD RED → GREEN | ✅ 확인 | 각 단계별 failing test 후 구현 및 pass 로그 |
+| 최종 전체 테스트 | ✅ 통과 | `Test Suites: 14 passed, 14 total` |
+
+이번 최신 세션에서 확인된 핵심 개선점:
+
+1. `docs/superpowers/specs/` 아래 설계 문서가 실제로 생성되고 리뷰까지 완료됐습니다.
+2. `writing-plans` 결과물에 TDD, 테스트 경로, 검증 명령이 구체적으로 반영됐습니다.
+3. 구현 단계에서 각 태스크별 RED → GREEN 로그가 transcript에 남았습니다.
+4. 최종적으로 root에서 `npm install` 후 `npm test` 재검증까지 수행해 72개 테스트가 통과했습니다.
+
+즉, 최신 예시는 더 이상 "설계 전 코드 작성 차단만 가능"한 상태가 아니라, **spec 작성, plan 작성, 테스트 선행 구현, 최종 검증까지 이어지는 흐름**을 보여줍니다.
+
+> 최신 근거 파일: [res/example_copilot_cli_session/session_export.md](./res/example_copilot_cli_session/session_export.md), [res/example_superpowers_plan_and_spec/2026-03-24-login-api-design.md](./res/example_superpowers_plan_and_spec/2026-03-24-login-api-design.md), [res/example_superpowers_plan_and_spec/2026-03-24-login-api.md](./res/example_superpowers_plan_and_spec/2026-03-24-login-api.md)
+
+---
+
 ## 일반적인 워크플로우
 
 ```
@@ -226,14 +308,25 @@ CLI (`extension.mjs` 옆)와 VS Code (`.github/hooks/` 안) 모두 동일한 설
    → SessionStart hook: using-superpowers 스킬 컨텍스트 + 한국어 지시 주입됨
    → CLI: onUserPromptSubmitted가 build 의도 감지 → brainstorming 스킬 자동 주입
 
-2. brainstorming 스킬 실행 → 설계 승인
-   → PreToolUse: brainstorming 미완료 시 코드 파일 작성 시도 차단
+2. brainstorming 스킬 실행
+    → 필요 시 visual companion 시작
+    → 접근 방식/아키텍처 화면 생성 후 설계 승인
 
-3. HARD-GATE 해제:
-   CLI:     superpowers_brainstorming_complete 도구 호출 (SDK Extension)
-   VS Code: /tmp/superpowers-edit-state-<hash>.json 파일 생성
+3. spec 문서 작성 및 리뷰
+    → `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+    → spec-reviewer 승인 후 사용자 검토
 
-4. 코드 작성 → PostToolUse: 린트 자동 실행 (활성화 시)
+4. plan 문서 작성 및 청크 리뷰
+    → `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
+    → chunk review 병렬 실행 가능
+
+5. TDD로 구현
+    → failing test 작성
+    → 구현
+    → test pass 확인
+
+6. 최종 검증
+    → `npm test` 또는 프로젝트별 전체 검증 명령 재실행
 ```
 
 ---
@@ -252,6 +345,10 @@ CLI (`extension.mjs` 옆)와 VS Code (`.github/hooks/` 안) 모두 동일한 설
 | `requesting-code-review` | PR 준비 완료 후 |
 | `receiving-code-review` | 리뷰 피드백 반영 시 |
 | `verification-before-completion` | 작업 완료 선언 전 항상 |
+| `using-git-worktrees` | 새 기능 브랜치 시작 시 |
+| `finishing-a-development-branch` | 브랜치 머지 준비 시 |
+| `writing-skills` | 새 팀 전용 스킬 작성 시 |
+| `using-superpowers` | 세션 시작 시 자동 주입 (메타 스킬) |
 | `using-git-worktrees` | 새 기능 브랜치 시작 시 |
 | `finishing-a-development-branch` | 브랜치 머지 준비 시 |
 | `writing-skills` | 새 팀 전용 스킬 작성 시 |

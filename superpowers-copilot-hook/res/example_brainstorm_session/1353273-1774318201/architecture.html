@@ -1,0 +1,85 @@
+<h2>아키텍처 설계</h2>
+<p class="subtitle">Node.js + Express + JWT + SQLite — 레이어드 구조</p>
+
+<div class="section">
+  <h3>📁 파일 구조</h3>
+  <pre style="background:#1e1e2e;color:#cdd6f4;padding:1.2rem;border-radius:8px;font-size:0.85rem;line-height:1.7">
+src/
+├── app.js               ← Express 앱 초기화
+├── db.js                ← SQLite 연결 & 스키마
+├── routes/
+│   └── auth.routes.js   ← POST /register, POST /login, GET /me
+├── controllers/
+│   └── auth.controller.js  ← HTTP 요청/응답 처리
+├── services/
+│   └── auth.service.js  ← 비즈니스 로직 (회원가입, 로그인)
+├── repositories/
+│   └── user.repository.js  ← DB 쿼리 추상화
+├── middlewares/
+│   └── authenticate.js  ← JWT 검증 미들웨어
+└── utils/
+    ├── jwt.js           ← token sign / verify
+    └── hash.js          ← bcrypt 래퍼
+  </pre>
+</div>
+
+<div class="section">
+  <h3>🔄 요청 흐름</h3>
+  <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;font-size:0.9rem;margin-top:0.5rem">
+    <span style="background:#313244;color:#cba6f7;padding:0.4rem 0.8rem;border-radius:6px">클라이언트</span>
+    <span>→</span>
+    <span style="background:#313244;color:#89b4fa;padding:0.4rem 0.8rem;border-radius:6px">Router</span>
+    <span>→</span>
+    <span style="background:#313244;color:#a6e3a1;padding:0.4rem 0.8rem;border-radius:6px">Controller</span>
+    <span>→</span>
+    <span style="background:#313244;color:#f9e2af;padding:0.4rem 0.8rem;border-radius:6px">Service</span>
+    <span>→</span>
+    <span style="background:#313244;color:#fab387;padding:0.4rem 0.8rem;border-radius:6px">Repository</span>
+    <span>→</span>
+    <span style="background:#313244;color:#f38ba8;padding:0.4rem 0.8rem;border-radius:6px">SQLite</span>
+  </div>
+</div>
+
+<div class="section">
+  <h3>🛣️ API 엔드포인트</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:0.9rem">
+    <thead>
+      <tr style="background:#313244;color:#cdd6f4">
+        <th style="padding:0.6rem;text-align:left">메서드</th>
+        <th style="padding:0.6rem;text-align:left">경로</th>
+        <th style="padding:0.6rem;text-align:left">설명</th>
+        <th style="padding:0.6rem;text-align:left">인증</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #313244">
+        <td style="padding:0.6rem;color:#a6e3a1">POST</td>
+        <td style="padding:0.6rem;font-family:monospace">/api/auth/register</td>
+        <td style="padding:0.6rem">회원가입</td>
+        <td style="padding:0.6rem">불필요</td>
+      </tr>
+      <tr style="border-bottom:1px solid #313244">
+        <td style="padding:0.6rem;color:#a6e3a1">POST</td>
+        <td style="padding:0.6rem;font-family:monospace">/api/auth/login</td>
+        <td style="padding:0.6rem">로그인 → JWT 반환</td>
+        <td style="padding:0.6rem">불필요</td>
+      </tr>
+      <tr>
+        <td style="padding:0.6rem;color:#89b4fa">GET</td>
+        <td style="padding:0.6rem;font-family:monospace">/api/auth/me</td>
+        <td style="padding:0.6rem">내 정보 조회</td>
+        <td style="padding:0.6rem">Bearer JWT 필요</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>🗄️ 데이터 모델 (users 테이블)</h3>
+  <pre style="background:#1e1e2e;color:#cdd6f4;padding:1rem;border-radius:8px;font-size:0.85rem">
+id          INTEGER PRIMARY KEY AUTOINCREMENT
+email       TEXT UNIQUE NOT NULL
+password    TEXT NOT NULL  -- bcrypt 해시
+created_at  TEXT DEFAULT (datetime('now'))
+  </pre>
+</div>

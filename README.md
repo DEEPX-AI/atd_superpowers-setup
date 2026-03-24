@@ -75,6 +75,17 @@ Claude Code를 직접 쓰기 어려운 환경(**회사 지원 도구가 GitHub C
 
 ---
 
+## 강제성 수준 비교
+
+| 구성 | 적용 방식 | 차단 수준 | AI 무시 가능 여부 |
+|------|-----------|-----------|-------------------|
+| **Copilot CLI** (hooks + extension) | 셸 Hook + SDK Extension | OS 레벨 차단 | ❌ 무시 불가 |
+| **VS Code Copilot Chat** (hooks) | 셸 Hook | OS 레벨 차단 | ❌ 무시 불가 |
+| **Copilot CLI** (plugin만) | 텍스트 지시 | 소프트 가이드 | ⚠️ 무시 가능 |
+| **Cline** (.clinerules) | 텍스트 지시 | 소프트 가이드 | ⚠️ 무시 가능 |
+
+---
+
 ## 빠른 시작
 
 ```bash
@@ -133,6 +144,12 @@ GitHub Copilot용 Hook 설치 스크립트. VS Code Copilot Chat과 Copilot CLI 
 
 - **셸 Hook** (vscode-hooks.sh): VS Code + CLI 공통. 3개 이벤트(SESSION START, PRE/POST TOOL USE)를 dual-format `hooks.json`으로 처리
 - **SDK Extension** (cli-extensions.sh): CLI 전용 확장. 프롬프트 분석, 커스텀 도구 등록, 에러 자동 재시도
+
+최신 실세션 예시는 아래 파일에서 바로 확인할 수 있습니다.
+
+- Transcript: [`superpowers-copilot-hook/res/example_copilot_cli_session/session_export.md`](superpowers-copilot-hook/res/example_copilot_cli_session/session_export.md)
+- Spec / Plan: [`superpowers-copilot-hook/res/example_superpowers_plan_and_spec/2026-03-24-login-api-design.md`](superpowers-copilot-hook/res/example_superpowers_plan_and_spec/2026-03-24-login-api-design.md), [`superpowers-copilot-hook/res/example_superpowers_plan_and_spec/2026-03-24-login-api.md`](superpowers-copilot-hook/res/example_superpowers_plan_and_spec/2026-03-24-login-api.md)
+- Brainstorm 화면: [`superpowers-copilot-hook/res/example_brainstorm_session/1353273-1774318201/approaches.html`](superpowers-copilot-hook/res/example_brainstorm_session/1353273-1774318201/approaches.html), [`superpowers-copilot-hook/res/example_brainstorm_session/1353273-1774318201/architecture.html`](superpowers-copilot-hook/res/example_brainstorm_session/1353273-1774318201/architecture.html)
 
 스킬 호출을 **소프트 지시(텍스트)** 가 아닌 **하드 차단(Hook)** 으로 강제합니다.
 

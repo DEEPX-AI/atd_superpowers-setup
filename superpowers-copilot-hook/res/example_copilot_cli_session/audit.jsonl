@@ -1,0 +1,9 @@
+{"event":"sessionStart","timestamp":"2026-03-24T09:00:00.000Z","source":"copilot-cli","cwd":"/tmp/login-example","policy":"superpowers","hookFile":".github/hooks/hooks.json"}
+{"event":"userPromptSubmitted","timestamp":"2026-03-24T09:00:08.120Z","cwd":"/tmp/login-example","prompt":"로그인 기능 추가해줘","redaction":"none"}
+{"event":"policyDecision","timestamp":"2026-03-24T09:00:09.004Z","gate":"brainstorming-before-code","status":"active","reason":"Code edits are blocked until requirements and design are clarified."}
+{"event":"userPromptSubmitted","timestamp":"2026-03-24T09:01:12.512Z","cwd":"/tmp/login-example","prompt":"Node.js + Express, 인메모리 저장, 로그인/로그아웃만","redaction":"none"}
+{"event":"preToolUse","timestamp":"2026-03-24T09:01:39.333Z","tool":"write","target":"src/auth.js","decision":"deny","reason":"brainstorming skill must complete before editing non-test code"}
+{"event":"sessionState","timestamp":"2026-03-24T09:02:10.200Z","brainstormingDone":true,"gateViolations":1,"selectedApproach":"A"}
+{"event":"postToolUse","timestamp":"2026-03-24T09:02:48.781Z","tool":"write","target":"docs/superpowers/specs/2026-03-23-login-design.md","result":"ok"}
+{"event":"postToolUse","timestamp":"2026-03-24T09:03:15.120Z","tool":"write","target":"docs/superpowers/plans/2026-03-23-login.md","result":"ok"}
+{"event":"sessionEnd","timestamp":"2026-03-24T09:03:40.902Z","status":"handoff-ready","artifacts":["docs/superpowers/specs/2026-03-23-login-design.md","docs/superpowers/plans/2026-03-23-login.md"],"violations":1}

@@ -171,6 +171,22 @@ Priority order:
 "Let's build X" → brainstorming first, then implementation skills.
 "Fix this bug" → systematic-debugging first, then domain-specific skills.
 
+## Required Feature Workflow
+
+For any build or feature request, follow this order exactly:
+
+1. `brainstorming`
+2. Write a design spec to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+3. Get user approval on the written spec
+4. `writing-plans`
+5. Save the implementation plan to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
+6. `test-driven-development`
+7. Only then write non-test code
+8. `verification-before-completion` before claiming success
+
+Never skip spec writing, plan writing, or test-first development even for small tasks.
+If a plan exists, implementation must start with a failing test before editing non-test code.
+
 ## Language Preference
 
 Always respond in Korean (한국어). All questions, explanations, design proposals,

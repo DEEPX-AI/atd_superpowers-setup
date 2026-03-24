@@ -99,10 +99,11 @@ cat > "$EXTENSIONS_DIR/extension.mjs" << 'EXTENSION_EOF'
  */
 
 import { joinSession } from "@github/copilot-sdk/extension";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 
 const execAsync = promisify(exec);
 
@@ -132,10 +133,123 @@ function readSkill(skillName) {
   return readFileSync(skillPath, "utf-8");
 }
 
+function normalizePath(filePath = "") {
+  return String(filePath).replaceAll("\\", "/");
+}
+
+function isSpecDocPath(filePath = "") {
+  return /(^|\/)docs\/superpowers\/specs\/.+\.md$/i.test(normalizePath(filePath));
+}
+
+function isPlanDocPath(filePath = "") {
+  return /(^|\/)docs\/superpowers\/plans\/.+\.md$/i.test(normalizePath(filePath));
+}
+
+function isTestPath(filePath = "") {
+  return /(\.(test|spec)\.[jt]sx?$)|\/tests?\/|\/__tests__\//i.test(normalizePath(filePath));
+}
+
+function isSetupPath(filePath = "") {
+  return /(^|\/)(package\.json|package-lock\.json|\.gitignore)$/i.test(normalizePath(filePath));
+}
+
+function hasMatchingFile(rootDir, predicate) {
+  if (!rootDir || !existsSync(rootDir)) return false;
+
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let entries = [];
+    try {
+      entries = readdirSync(current);
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(current, entry);
+      let stats;
+      try {
+        stats = statSync(fullPath);
+      } catch {
+        continue;
+      }
+
+      if (stats.isDirectory()) {
+        if (entry === ".git" || entry === "node_modules") continue;
+        stack.push(fullPath);
+        continue;
+      }
+
+      if (predicate(normalizePath(fullPath))) return true;
+    }
+  }
+
+  return false;
+}
+
+function hasSpecDoc(cwd) {
+  return hasMatchingFile(join(cwd, "docs", "superpowers", "specs"), (filePath) => filePath.endsWith(".md"));
+}
+
+function hasPlanDoc(cwd) {
+  return hasMatchingFile(join(cwd, "docs", "superpowers", "plans"), (filePath) => filePath.endsWith(".md"));
+}
+
+function hasTestFile(cwd) {
+  return hasMatchingFile(cwd, (filePath) => isTestPath(filePath));
+}
+
+function getSessionCwd(input) {
+  return String(input?.cwd ?? process.cwd());
+}
+
+function getStateFilePath(cwd) {
+  const digest = createHash("md5").update(`${cwd}\n`).digest("hex").slice(0, 8);
+  return `/tmp/superpowers-edit-state-${digest}.json`;
+}
+
+function syncStateFromFilesystem(cwd) {
+  if (!cwd) return;
+
+  if (hasSpecDoc(cwd)) state.specWritten = true;
+  if (hasPlanDoc(cwd)) state.planWritten = true;
+  if (hasTestFile(cwd)) state.tddStarted = true;
+
+  if (state.specWritten || state.planWritten || state.tddStarted) {
+    state.brainstormingDone = true;
+  }
+  if (state.planWritten || state.tddStarted) {
+    state.specWritten = true;
+  }
+  if (state.tddStarted) {
+    state.planWritten = true;
+  }
+}
+
+function persistState(cwd) {
+  if (!cwd) return;
+  try {
+    writeFileSync(
+      getStateFilePath(cwd),
+      JSON.stringify({
+        brainstormingDone: state.brainstormingDone,
+        specWritten: state.specWritten,
+        planWritten: state.planWritten,
+        tddStarted: state.tddStarted,
+      }, null, 2),
+    );
+  } catch {
+    // best effort only
+  }
+}
+
 // ── 세션 상태 (메모리, /clear 시 초기화됨) ──────────────────
 const state = {
   brainstormingDone: false,      // brainstorming 스킬 완료 여부
+  specWritten: false,            // spec 문서 작성 여부
   planWritten: false,            // writing-plans 완료 여부
+  tddStarted: false,             // 테스트 파일 선행 작성 여부
   currentTask: null,             // 현재 작업 유형
   gateViolations: 0,             // HARD-GATE 위반 횟수
 };
@@ -177,6 +291,10 @@ const session = await joinSession({
 
     // ── onSessionStart: 세션 시작 시 스킬 컨텍스트 주입 ─────
     onSessionStart: async (input) => {
+      const cwd = getSessionCwd(input);
+      syncStateFromFilesystem(cwd);
+      persistState(cwd);
+
       const usingSuperpowers = readSkill("using-superpowers");
       if (!usingSuperpowers) {
         await session.log("⚠️  Superpowers 스킬을 찾을 수 없습니다: " + SKILLS_BASE, { level: "warning" });
@@ -195,6 +313,7 @@ const session = await joinSession({
           "=== SKILL PATHS ===",
           `Skills are located at: ${SKILLS_BASE}`,
           "Read the relevant SKILL.md file before starting any task.",
+          "For feature work, follow this exact order: brainstorming -> spec -> writing-plans -> test-driven-development -> implementation -> verification-before-completion.",
           "",
           "[Language] 모든 응답, 질문, 설명, 설계 제안은 한국어로 작성하세요. 코드 식별자(변수명, 함수명)는 영어를 유지합니다.",
           "=== END SUPERPOWERS ===",
@@ -204,10 +323,17 @@ const session = await joinSession({
 
     // ── onUserPromptSubmitted: 프롬프트 분석 + 스킬 트리거 ──
     onUserPromptSubmitted: async (input) => {
+      const cwd = getSessionCwd(input);
+      syncStateFromFilesystem(cwd);
+      persistState(cwd);
+
       const trigger = detectTrigger(input.prompt);
       state.currentTask = trigger;
 
       const contextParts = [];
+      const specWritten = state.specWritten || hasSpecDoc(cwd);
+      const planWritten = state.planWritten || hasPlanDoc(cwd);
+      const tddStarted = state.tddStarted || hasTestFile(cwd);
 
       if (trigger === "build" && !state.brainstormingDone) {
         const skill = readSkill("brainstorming");
@@ -217,7 +343,38 @@ const session = await joinSession({
         contextParts.push(
           "SKILL TRIGGERED: brainstorming",
           "You MUST invoke the brainstorming skill before any implementation.",
+          "After the user approves the design, call superpowers_brainstorming_complete, then write the spec doc before anything else.",
           "Read: " + SKILLS_BASE + "/brainstorming/SKILL.md",
+          skill ? "\n---\n" + skill.slice(0, 2000) + "\n---" : "",
+        );
+      } else if (trigger === "build" && !specWritten) {
+        const skill = readSkill("brainstorming");
+        contextParts.push(
+          "WORKFLOW STAGE REQUIRED: write the design spec now.",
+          "Before writing plans or implementation code, save the approved design to docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md and ask the user to review it.",
+          "Do not skip spec writing even for small tasks.",
+          skill ? "\n---\n" + skill.slice(0, 1200) + "\n---" : "",
+        );
+      } else if (trigger === "build" && !planWritten) {
+        const skill = readSkill("writing-plans");
+        if (skill && LOG_SKILL_INVOCATIONS) {
+          await session.log("🗺️ writing-plans 스킬 활성화", { ephemeral: true });
+        }
+        contextParts.push(
+          "SKILL TRIGGERED: writing-plans",
+          "The spec exists. Your next required step is to write the implementation plan to docs/superpowers/plans/YYYY-MM-DD-<feature>.md.",
+          "Read: " + SKILLS_BASE + "/writing-plans/SKILL.md",
+          skill ? "\n---\n" + skill.slice(0, 2000) + "\n---" : "",
+        );
+      } else if (trigger === "build" && !tddStarted) {
+        const skill = readSkill("test-driven-development");
+        if (skill && LOG_SKILL_INVOCATIONS) {
+          await session.log("🧪 test-driven-development 스킬 활성화", { ephemeral: true });
+        }
+        contextParts.push(
+          "SKILL TRIGGERED: test-driven-development",
+          "A plan exists. Implementation must start by writing a failing test before editing non-test code.",
+          "Read: " + SKILLS_BASE + "/test-driven-development/SKILL.md",
           skill ? "\n---\n" + skill.slice(0, 2000) + "\n---" : "",
         );
       }
@@ -246,6 +403,9 @@ const session = await joinSession({
     onPreToolUse: async (input) => {
       if (!ENFORCE_HARD_GATES) return { permissionDecision: "allow" };
 
+      const cwd = getSessionCwd(input);
+      syncStateFromFilesystem(cwd);
+
       const isCodeWrite = CODE_WRITE_TOOLS.has(input.toolName);
       if (!isCodeWrite) return { permissionDecision: "allow" };
 
@@ -253,35 +413,102 @@ const session = await joinSession({
       const filePath = String(
         input.toolArgs?.path ?? input.toolArgs?.file_path ?? ""
       );
-      const isTestFile =
-        /\.(test|spec)\.[jt]sx?$/.test(filePath) ||
-        /\/test[s]?\//.test(filePath) ||
-        /\/__tests__\//.test(filePath);
+      if (!filePath) return { permissionDecision: "allow" };
+
+      const isSpecDoc = isSpecDocPath(filePath);
+      const isPlanDoc = isPlanDocPath(filePath);
+      const isTestFile = isTestPath(filePath);
+      const isSetupFile = isSetupPath(filePath);
+      const specWritten = state.specWritten || hasSpecDoc(cwd);
+      const planWritten = state.planWritten || hasPlanDoc(cwd);
+      const tddStarted = state.tddStarted || hasTestFile(cwd);
+
+      const deny = async (reasonLines) => {
+        state.gateViolations++;
+        await session.log(
+          `🚫 HARD-GATE 위반 #${state.gateViolations}: ${reasonLines[0]}`,
+          { level: "warning" }
+        );
+        persistState(cwd);
+        return {
+          permissionDecision: "deny",
+          permissionDecisionReason: [...reasonLines, "", `위반 횟수: ${state.gateViolations}회`].join("\n"),
+        };
+      };
+
+      if (isSpecDoc) {
+        if (!state.brainstormingDone) {
+          return deny([
+            "HARD-GATE: brainstorming이 완료되지 않았습니다.",
+            "Spec 문서를 쓰기 전에 brainstorming 스킬을 끝내고 superpowers_brainstorming_complete 를 호출하세요.",
+          ]);
+        }
+        return { permissionDecision: "allow" };
+      }
+
+      if (isPlanDoc) {
+        if (!state.brainstormingDone) {
+          return deny([
+            "HARD-GATE: brainstorming이 완료되지 않았습니다.",
+            "Plan을 쓰기 전에 먼저 brainstorming과 spec 작성이 필요합니다.",
+          ]);
+        }
+        if (!specWritten) {
+          return deny([
+            "HARD-GATE: spec 문서가 아직 없습니다.",
+            "docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md 를 먼저 작성하고 사용자 검토를 받으세요.",
+          ]);
+        }
+        return { permissionDecision: "allow" };
+      }
 
       if (isTestFile) {
+        if (!state.brainstormingDone || !specWritten || !planWritten) {
+          return deny([
+            "HARD-GATE: 테스트 작성 전 단계가 완료되지 않았습니다.",
+            "Test 파일은 brainstorming -> spec -> plan 이후에 작성해야 합니다.",
+          ]);
+        }
         await session.log("✅ 테스트 파일 작성 허용 (TDD)", { ephemeral: true });
         return { permissionDecision: "allow" };
       }
 
-      // brainstorming이 완료되지 않은 경우 코드 작성 차단
+      if (isSetupFile) {
+        if (!state.brainstormingDone || !specWritten || !planWritten) {
+          return deny([
+            "HARD-GATE: setup 파일 작성 전 단계가 완료되지 않았습니다.",
+            "package.json, package-lock.json, .gitignore 수정도 spec과 plan 이후에 진행해야 합니다.",
+          ]);
+        }
+        return { permissionDecision: "allow" };
+      }
+
       if (!state.brainstormingDone) {
-        state.gateViolations++;
-        await session.log(
-          `🚫 HARD-GATE 위반 #${state.gateViolations}: 설계 없이 코드 작성 시도`,
-          { level: "warning" }
-        );
-        return {
-          permissionDecision: "deny",
-          permissionDecisionReason: [
-            "HARD-GATE: 설계(brainstorming)가 완료되지 않았습니다.",
-            "",
-            "코드를 작성하기 전에 반드시:",
-            "1. 'Use the brainstorming skill' 을 실행하세요",
-            "2. 설계가 승인되면 'brainstorming complete' 라고 알려주세요",
-            "",
-            `위반 횟수: ${state.gateViolations}회`,
-          ].join("\n"),
-        };
+        return deny([
+          "HARD-GATE: 설계(brainstorming)가 완료되지 않았습니다.",
+          "먼저 brainstorming 스킬을 완료하고 superpowers_brainstorming_complete 를 호출하세요.",
+        ]);
+      }
+
+      if (!specWritten) {
+        return deny([
+          "HARD-GATE: spec 문서가 아직 없습니다.",
+          "non-test code 작성 전에 docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md 를 먼저 작성해야 합니다.",
+        ]);
+      }
+
+      if (!planWritten) {
+        return deny([
+          "HARD-GATE: plan 문서가 아직 없습니다.",
+          "non-test code 작성 전에 docs/superpowers/plans/YYYY-MM-DD-<feature>.md 를 먼저 작성해야 합니다.",
+        ]);
+      }
+
+      if (!tddStarted) {
+        return deny([
+          "HARD-GATE: TDD가 시작되지 않았습니다.",
+          "non-test code 작성 전에 failing test를 먼저 작성하세요.",
+        ]);
       }
 
       return { permissionDecision: "allow" };
@@ -289,14 +516,39 @@ const session = await joinSession({
 
     // ── onPostToolUse: 파일 편집 후 린트 자동 실행 ──────────
     onPostToolUse: async (input) => {
+      const cwd = getSessionCwd(input);
+      const filePath = String(input.toolArgs?.path ?? input.toolArgs?.file_path ?? "");
+
+      if (filePath) {
+        if (isSpecDocPath(filePath)) {
+          state.specWritten = true;
+          state.brainstormingDone = true;
+          await session.log(`📝 Spec 문서 감지: ${filePath}`, { ephemeral: true });
+        }
+        if (isPlanDocPath(filePath)) {
+          state.planWritten = true;
+          state.specWritten = true;
+          state.brainstormingDone = true;
+          await session.log(`🗺️ Plan 문서 감지: ${filePath}`, { ephemeral: true });
+        }
+        if (isTestPath(filePath)) {
+          state.tddStarted = true;
+          state.planWritten = true;
+          state.specWritten = true;
+          state.brainstormingDone = true;
+          await session.log(`🧪 테스트 파일 감지: ${filePath}`, { ephemeral: true });
+        }
+      }
+
+      syncStateFromFilesystem(cwd);
+      persistState(cwd);
+
       if (!ENABLE_LINT_HOOK) return {};
 
       const isEdit =
         input.toolName === "edit" ||
         input.toolName === "str_replace_based_edit_tool";
       if (!isEdit) return {};
-
-      const filePath = String(input.toolArgs?.path ?? "");
       if (!filePath) return {};
 
       const shouldLint = LINT_EXTENSIONS.some((ext) => filePath.endsWith(ext));
@@ -354,6 +606,8 @@ const session = await joinSession({
       },
       handler: async (args) => {
         state.brainstormingDone = true;
+        const cwd = process.cwd();
+        persistState(cwd);
         await session.log(`✅ Brainstorming 완료: ${args.summary}`);
         return `Brainstorming complete. Code writing is now unlocked. Design: ${args.summary}`;
       },
@@ -400,7 +654,9 @@ const session = await joinSession({
       handler: async () => {
         return JSON.stringify({
           brainstormingDone: state.brainstormingDone,
+          specWritten: state.specWritten,
           planWritten: state.planWritten,
+          tddStarted: state.tddStarted,
           currentTask: state.currentTask,
           gateViolations: state.gateViolations,
           enforceHardGates: ENFORCE_HARD_GATES,

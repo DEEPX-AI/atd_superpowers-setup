@@ -195,14 +195,13 @@ d = json.load(sys.stdin)
 print(d.get('filePath', d.get('path', d.get('file_path', ''))))
 " 2>/dev/null || echo "")
 
-# ── 테스트 파일은 항상 허용 (TDD RED 단계) ───────────────
-if echo "$FILE_PATH" | grep -qE '\.(test|spec)\.[jt]sx?$|/tests?/|/__tests__/'; then
-  exit 0
-fi
-
-# ── 브레인스토밍 완료 여부 확인 ──────────────────────────
+# ── 상태 파일 및 단계 확인 ────────────────────────────────
 STATE_FILE="/tmp/superpowers-edit-state-$(echo "$CWD" | md5sum | cut -c1-8).json"
 BRAINSTORMING_DONE=false
+SPEC_WRITTEN=false
+PLAN_WRITTEN=false
+TDD_STARTED=false
+
 if [ -f "$STATE_FILE" ]; then
   BRAINSTORMING_DONE=$(python3 -c "
 import json
@@ -210,31 +209,114 @@ with open('$STATE_FILE') as f:
     d = json.load(f)
 print(str(d.get('brainstormingDone', False)).lower())
 " 2>/dev/null || echo "false")
+  SPEC_WRITTEN=$(python3 -c "
+import json
+with open('$STATE_FILE') as f:
+    d = json.load(f)
+print(str(d.get('specWritten', False)).lower())
+" 2>/dev/null || echo "false")
+  PLAN_WRITTEN=$(python3 -c "
+import json
+with open('$STATE_FILE') as f:
+    d = json.load(f)
+print(str(d.get('planWritten', False)).lower())
+" 2>/dev/null || echo "false")
+  TDD_STARTED=$(python3 -c "
+import json
+with open('$STATE_FILE') as f:
+    d = json.load(f)
+print(str(d.get('tddStarted', False)).lower())
+" 2>/dev/null || echo "false")
 fi
 
-# ── HARD-GATE 적용 (코드 작성 도구 호출 자체가 트리거) ───
-if [ "$BRAINSTORMING_DONE" = "false" ]; then
-  DENY_REASON="HARD-GATE VIOLATION: brainstorming not completed. Run brainstorming skill first, then set brainstormingDone:true in state file."
+if [ "$SPEC_WRITTEN" = "false" ] && find "$CWD/docs/superpowers/specs" -type f -name '*.md' -print -quit 2>/dev/null | grep -q .; then
+  SPEC_WRITTEN=true
+  BRAINSTORMING_DONE=true
+fi
 
+if [ "$PLAN_WRITTEN" = "false" ] && find "$CWD/docs/superpowers/plans" -type f -name '*.md' -print -quit 2>/dev/null | grep -q .; then
+  PLAN_WRITTEN=true
+  SPEC_WRITTEN=true
+  BRAINSTORMING_DONE=true
+fi
+
+if [ "$TDD_STARTED" = "false" ] && find "$CWD" \( -path "$CWD/node_modules" -o -path "$CWD/.git" \) -prune -o -type f -print 2>/dev/null | grep -qE '\.(test|spec)\.[jt]sx?$|/tests?/|/__tests__/'; then
+  TDD_STARTED=true
+  PLAN_WRITTEN=true
+  SPEC_WRITTEN=true
+  BRAINSTORMING_DONE=true
+fi
+
+IS_SPEC_DOC=false
+IS_PLAN_DOC=false
+IS_SETUP_FILE=false
+if echo "$FILE_PATH" | grep -qE '(^|/)docs/superpowers/specs/.+\.md$'; then
+  IS_SPEC_DOC=true
+fi
+if echo "$FILE_PATH" | grep -qE '(^|/)docs/superpowers/plans/.+\.md$'; then
+  IS_PLAN_DOC=true
+fi
+if echo "$FILE_PATH" | grep -qE '(^|/)(package\.json|package-lock\.json|\.gitignore)$'; then
+  IS_SETUP_FILE=true
+fi
+
+deny_with_reason() {
+  local reason="$1"
   if [ "$IS_CLI" = "true" ]; then
-    # CLI: stdout JSON으로 차단
-    echo "{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$DENY_REASON\"}"
+    echo "{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$reason\"}"
     exit 0
   else
-    # VS Code: stderr + exit 2로 차단
-    cat >&2 << 'DENY_MSG'
-HARD-GATE VIOLATION: 설계(brainstorming)가 완료되지 않았습니다.
-
-코드를 작성하기 전에 반드시:
-1. brainstorming 스킬을 실행하세요:
-   Read: ~/.copilot/skills/brainstorming/SKILL.md
-2. 설계가 승인되면 아래 파일을 생성하여 잠금을 해제하세요:
-   echo '{"brainstormingDone": true}' > /tmp/superpowers-state.json
-
-또는 config.json에서 enforceHardGates: false 로 설정하면 차단이 비활성화됩니다.
-DENY_MSG
+    echo "$reason" >&2
     exit 2
   fi
+}
+
+# ── HARD-GATE 적용 (spec -> plan -> TDD -> code) ──────────
+if [ "$IS_SPEC_DOC" = "true" ]; then
+  if [ "$BRAINSTORMING_DONE" = "false" ]; then
+    deny_with_reason "HARD-GATE: brainstorming 완료 후 spec 문서를 작성하세요."
+  fi
+  exit 0
+fi
+
+if [ "$IS_PLAN_DOC" = "true" ]; then
+  if [ "$BRAINSTORMING_DONE" = "false" ]; then
+    deny_with_reason "HARD-GATE: brainstorming 완료 후 plan 문서를 작성하세요."
+  fi
+  if [ "$SPEC_WRITTEN" = "false" ]; then
+    deny_with_reason "HARD-GATE: spec 문서가 없습니다. docs/superpowers/specs/... 를 먼저 작성하세요."
+  fi
+  exit 0
+fi
+
+if echo "$FILE_PATH" | grep -qE '\.(test|spec)\.[jt]sx?$|/tests?/|/__tests__/'; then
+  if [ "$BRAINSTORMING_DONE" = "false" ] || [ "$SPEC_WRITTEN" = "false" ] || [ "$PLAN_WRITTEN" = "false" ]; then
+    deny_with_reason "HARD-GATE: 테스트 파일은 brainstorming -> spec -> plan 이후에 작성해야 합니다."
+  fi
+  exit 0
+fi
+
+if [ "$IS_SETUP_FILE" = "true" ]; then
+  if [ "$BRAINSTORMING_DONE" = "false" ] || [ "$SPEC_WRITTEN" = "false" ] || [ "$PLAN_WRITTEN" = "false" ]; then
+    deny_with_reason "HARD-GATE: setup 파일은 spec과 plan 작성 이후에 수정해야 합니다."
+  fi
+  exit 0
+fi
+
+if [ "$BRAINSTORMING_DONE" = "false" ]; then
+  deny_with_reason "HARD-GATE: 설계(brainstorming)가 완료되지 않았습니다."
+fi
+
+if [ "$SPEC_WRITTEN" = "false" ]; then
+  deny_with_reason "HARD-GATE: spec 문서가 없습니다. non-test code 전에 spec을 먼저 작성하세요."
+fi
+
+if [ "$PLAN_WRITTEN" = "false" ]; then
+  deny_with_reason "HARD-GATE: plan 문서가 없습니다. non-test code 전에 plan을 먼저 작성하세요."
+fi
+
+if [ "$TDD_STARTED" = "false" ]; then
+  deny_with_reason "HARD-GATE: TDD가 시작되지 않았습니다. non-test code 전에 failing test를 먼저 작성하세요."
 fi
 
 exit 0
@@ -243,36 +325,9 @@ SCRIPT_EOF
 # ── 스크립트 3: post-tool-use.sh ─────────────────────────────
 cat > "$SCRIPTS_DIR/post-tool-use.sh" << 'EOF'
 #!/usr/bin/env bash
-# onPostToolUse: 파일 편집 후 린트 자동 실행 (선택적)
+# onPostToolUse: 상태 파일 갱신 + 파일 편집 후 린트 자동 실행 (선택적)
 
 INPUT=$(cat)
-
-# config에서 lint 활성화 여부 확인
-CWD=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null || echo "")
-CONFIG_FILE="${CWD}/.github/hooks/config.json"
-
-ENABLE_LINT="false"
-LINT_CMD="npx eslint --fix"
-LINT_EXTS=".ts .tsx .js .jsx"
-
-if [ -f "$CONFIG_FILE" ]; then
-  ENABLE_LINT=$(python3 -c "
-import json
-with open('$CONFIG_FILE') as f:
-    d = json.load(f)
-print(str(d.get('enableLintAfterEdit', False)).lower())
-" 2>/dev/null || echo "false")
-  LINT_CMD=$(python3 -c "
-import json
-with open('$CONFIG_FILE') as f:
-    d = json.load(f)
-print(d.get('lintCommand', 'npx eslint --fix'))
-" 2>/dev/null || echo "npx eslint --fix")
-fi
-
-if [ "$ENABLE_LINT" = "false" ]; then
-  exit 0
-fi
 
 TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_name', d.get('toolName','')))" 2>/dev/null || echo "")
 EDIT_TOOLS="create_file replace_string_in_file multi_replace_string_in_file edit_notebook_file edit str_replace_based_edit_tool create"
@@ -301,6 +356,69 @@ print(ti.get('filePath', ti.get('path', ti.get('file_path', ''))))
 " 2>/dev/null || echo "")
 
 if [ -z "$FILE_PATH" ]; then
+  exit 0
+fi
+
+CWD=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null || echo "")
+STATE_FILE="/tmp/superpowers-edit-state-$(echo "$CWD" | md5sum | cut -c1-8).json"
+
+python3 - <<PY 2>/dev/null || true
+import json, os, re
+
+state_file = ${STATE_FILE@Q}
+file_path = ${FILE_PATH@Q}.replace('\\\\', '/')
+state = {}
+
+if os.path.exists(state_file):
+    try:
+        with open(state_file) as f:
+            state = json.load(f)
+    except Exception:
+        state = {}
+
+state.setdefault('brainstormingDone', False)
+state.setdefault('specWritten', False)
+state.setdefault('planWritten', False)
+state.setdefault('tddStarted', False)
+
+if re.search(r'(^|/)docs/superpowers/specs/.+\.md$', file_path):
+    state['specWritten'] = True
+    state['brainstormingDone'] = True
+if re.search(r'(^|/)docs/superpowers/plans/.+\.md$', file_path):
+    state['planWritten'] = True
+    state['specWritten'] = True
+    state['brainstormingDone'] = True
+if re.search(r'(\.(test|spec)\.[jt]sx?$)|/tests?/|/__tests__/', file_path):
+    state['tddStarted'] = True
+    state['planWritten'] = True
+    state['specWritten'] = True
+    state['brainstormingDone'] = True
+
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2)
+PY
+
+CONFIG_FILE="${CWD}/.github/hooks/config.json"
+ENABLE_LINT="false"
+LINT_CMD="npx eslint --fix"
+LINT_EXTS=".ts .tsx .js .jsx"
+
+if [ -f "$CONFIG_FILE" ]; then
+  ENABLE_LINT=$(python3 -c "
+import json
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+print(str(d.get('enableLintAfterEdit', False)).lower())
+" 2>/dev/null || echo "false")
+  LINT_CMD=$(python3 -c "
+import json
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+print(d.get('lintCommand', 'npx eslint --fix'))
+" 2>/dev/null || echo "npx eslint --fix")
+fi
+
+if [ "$ENABLE_LINT" = "false" ]; then
   exit 0
 fi
 
