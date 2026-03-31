@@ -18,14 +18,16 @@ CLINE_INSTALL="$SCRIPT_DIR/superpowers-cline/install-superpowers-cline.sh"
 COPILOT_PLUGIN="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-plugin.sh"
 COPILOT_CLI_HOOKS="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-cli-extensions.sh"
 COPILOT_VSCODE_HOOKS="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-vscode-hooks.sh"
+OPENCODE_INSTALL="$SCRIPT_DIR/superpowers-opencode/install-superpowers-opencode.sh"
 
 # ── 사용법 출력 ───────────────────────────────────────────────
 usage() {
   echo ""
   echo "사용법:"
-  echo "  bash $(basename "$0") all     /path/to/project   # Cline + Copilot 모두 설치"
+  echo "  bash $(basename "$0") all      /path/to/project   # Cline + Copilot + OpenCode 모두 설치"
   echo "  bash $(basename "$0") cline   /path/to/project   # Cline만 설치"
   echo "  bash $(basename "$0") copilot /path/to/project   # Copilot 설치"
+  echo "  bash $(basename "$0") opencode /path/to/project  # OpenCode만 설치"
   echo ""
   exit 1
 }
@@ -39,7 +41,7 @@ if [ -z "$COMMAND" ]; then
   usage
 fi
 
-if [[ "$COMMAND" != "all" && "$COMMAND" != "cline" && "$COMMAND" != "copilot" ]]; then
+if [[ "$COMMAND" != "all" && "$COMMAND" != "cline" && "$COMMAND" != "copilot" && "$COMMAND" != "opencode" ]]; then
   echo "❌ 알 수 없는 명령: $COMMAND"
   usage
 fi
@@ -80,6 +82,14 @@ install_copilot() {
   bash "$COPILOT_VSCODE_HOOKS" "$PROJECT"
 }
 
+install_opencode() {
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  [1/1] Superpowers for OpenCode"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  bash "$OPENCODE_INSTALL" "$PROJECT"
+}
+
 # ── 실행 ─────────────────────────────────────────────────────
 echo ""
 echo "🦸 Superpowers Setup — 통합 설치"
@@ -91,12 +101,16 @@ case "$COMMAND" in
   all)
     install_cline
     install_copilot
+    install_opencode
     ;;
   cline)
     install_cline
     ;;
   copilot)
     install_copilot
+    ;;
+  opencode)
+    install_opencode
     ;;
 esac
 
@@ -117,6 +131,11 @@ case "$COMMAND" in
     echo "   - ~/.copilot/skills/ (14개 스킬, 개별 symlink)"
     echo "   - $PROJECT/.github/extensions/superpowers-enforcer/ (CLI Extension)"
     echo "   - $PROJECT/.github/hooks/ (셸 Hook — VS Code + CLI 공통)"
+    ;;&
+  all | opencode)
+    echo "   [OpenCode]"
+    echo "   - ~/.config/opencode/opencode.json plugin 추가됨"
+    echo "   - AGENTS.md, docs/superpowers/ 생성됨"
     ;;
 esac
 

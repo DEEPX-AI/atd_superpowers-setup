@@ -20,17 +20,19 @@ CLINE_INSTALL="$SCRIPT_DIR/superpowers-cline/install-superpowers-cline.sh"
 COPILOT_PLUGIN="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-plugin.sh"
 COPILOT_CLI_HOOKS="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-cli-extensions.sh"
 COPILOT_VSCODE_HOOKS="$SCRIPT_DIR/superpowers-copilot-hook/install-superpowers-copilot-vscode-hooks.sh"
+OPENCODE_INSTALL="$SCRIPT_DIR/superpowers-opencode/install-superpowers-opencode.sh"
 
 # ── 사용법 출력 ───────────────────────────────────────────────
 usage() {
   echo ""
   echo "사용법:"
-  echo "  bash $(basename "$0") all     /path/to/project [--with-plugin]   # Cline + Copilot 모두 제거"
+  echo "  bash $(basename "$0") all      /path/to/project [--with-plugin]   # Cline + Copilot + OpenCode 모두 제거"
   echo "  bash $(basename "$0") cline   /path/to/project                   # Cline만 제거"
   echo "  bash $(basename "$0") copilot /path/to/project [--with-plugin]   # Copilot Hook 제거"
+  echo "  bash $(basename "$0") opencode /path/to/project                  # OpenCode 제거"
   echo ""
   echo "옵션:"
-  echo "  --with-plugin  w 전역 Copilot 플러그인도 함께 제거 (다른 프로젝트에 영향)"
+  echo "  --with-plugin  전역 Copilot 플러그인도 함께 제거 (다른 프로젝트에 영향)"
   echo ""
   exit 1
 }
@@ -44,7 +46,7 @@ if [ -z "$COMMAND" ]; then
   usage
 fi
 
-if [[ "$COMMAND" != "all" && "$COMMAND" != "cline" && "$COMMAND" != "copilot" ]]; then
+if [[ "$COMMAND" != "all" && "$COMMAND" != "cline" && "$COMMAND" != "copilot" && "$COMMAND" != "opencode" ]]; then
   echo "❌ 알 수 없는 명령: $COMMAND"
   usage
 fi
@@ -106,6 +108,14 @@ uninstall_copilot() {
   bash "$COPILOT_VSCODE_HOOKS" uninstall "$PROJECT"
 }
 
+uninstall_opencode() {
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  [1/1] Superpowers for OpenCode 제거"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  bash "$OPENCODE_INSTALL" uninstall "$PROJECT"
+}
+
 # ── 실행 ─────────────────────────────────────────────────────
 echo ""
 echo "🗑️  Superpowers Setup — 통합 제거"
@@ -118,12 +128,16 @@ case "$COMMAND" in
   all)
     uninstall_cline
     uninstall_copilot
+    uninstall_opencode
     ;;
   cline)
     uninstall_cline
     ;;
   copilot)
     uninstall_copilot
+    ;;
+  opencode)
+    uninstall_opencode
     ;;
 esac
 
@@ -149,6 +163,11 @@ case "$COMMAND" in
     echo "   - .github/extensions/superpowers-enforcer/ 제거됨"
     echo "   - .github/hooks/ 제거됨"
     echo "   - .vscode/settings.json의 chat.hooks 설정 제거됨"
+    ;;&
+  all | opencode)
+    echo "   [OpenCode]"
+    echo "   - ~/.config/opencode/opencode.json에서 plugin 제거됨"
+    echo "   - AGENTS.md, docs/superpowers/ 제거됨"
     ;;
 esac
 
