@@ -23,12 +23,23 @@
 
 set -euo pipefail
 
+# ── 인자 파싱 (--local 분리) ──────────────────────────────────
+LOCAL_MODE=false
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --local) LOCAL_MODE=true ;;
+    *) POSITIONAL+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL[@]}"
+
 COMMAND="${1:-}"
 
 if [ "$COMMAND" = "uninstall" ]; then
   if [ -z "${2:-}" ]; then
     echo "❌ 제거할 프로젝트 경로를 지정해야 합니다."
-    echo "   사용법: bash $(basename "$0") uninstall /path/to/project"
+    echo "   사용법: bash $(basename "$0") uninstall /path/to/project [--local]"
     exit 1
   fi
   PROJECT_DIR="$(cd "$2" && pwd)"
@@ -69,26 +80,35 @@ fi
 
 if [ -z "$COMMAND" ]; then
   echo "❌ 프로젝트 경로를 지정해야 합니다."
-  echo "   설치: bash $(basename "$0") /path/to/project"
-  echo "   제거: bash $(basename "$0") uninstall /path/to/project"
+  echo "   설치: bash $(basename "$0") /path/to/project [--local]"
+  echo "   제거: bash $(basename "$0") uninstall /path/to/project [--local]"
   exit 1
 fi
 
 PROJECT_DIR="$(cd "$1" && pwd)"
 HOOKS_DIR="$PROJECT_DIR/.github/hooks"
 SCRIPTS_DIR="$HOOKS_DIR/scripts"
-SKILLS_DIR="$HOME/.copilot/skills"
+if $LOCAL_MODE; then
+  SKILLS_DIR="$PROJECT_DIR/.superpowers/skills"
+else
+  SKILLS_DIR="$HOME/.copilot/skills"
+fi
 
 echo ""
 echo "🦸 Superpowers Hook — VS Code Copilot Chat 설치"
 echo "================================================"
 echo "   프로젝트: $PROJECT_DIR"
+$LOCAL_MODE && echo "   모드:    --local ($SKILLS_DIR)" || echo "   모드:    전역 ($SKILLS_DIR)"
 echo ""
 
 # ── 사전 조건 확인 ──────────────────────────────────────────
 if [ ! -d "$SKILLS_DIR" ]; then
-  echo "❌ 스킬이 설치되어 있지 않습니다."
-  echo "   먼저 실행: bash install-superpowers-copilot-plugin.sh"
+  echo "❌ 스킬이 설치되어 있지 않습니다: $SKILLS_DIR"
+  if $LOCAL_MODE; then
+    echo "   먼저 실행: bash install-superpowers-copilot-plugin.sh $PROJECT_DIR --local"
+  else
+    echo "   먼저 실행: bash install-superpowers-copilot-plugin.sh"
+  fi
   exit 1
 fi
 
@@ -114,6 +134,14 @@ SKILL_CONTENT=$(cat "$SKILL_FILE" | python3 -c "import sys,json; print(json.dump
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"=== SUPERPOWERS FRAMEWORK ACTIVE ===\nSkills path: %s\nRead the relevant SKILL.md before starting any task.\n\n[Language] 모든 응답, 질문, 설명, 설계 제안은 한국어로 작성하세요. 코드 식별자(변수명, 함수명)는 영어를 유지합니다.\n=== END SUPERPOWERS ==="}}' \
   "$SKILLS_DIR"
 EOF
+
+# ── 로컬 모드: session-start.sh 의 SKILLS_DIR 절대경로 치환 ──
+if $LOCAL_MODE; then
+  # SKILLS_DIR="${HOME}/.copilot/skills" → SKILLS_DIR="<project>/.superpowers/skills"
+  SKILLS_DIR_ESCAPED=$(printf '%s' "$SKILLS_DIR" | sed -e 's/[\/&]/\\&/g')
+  sed -i "s|^SKILLS_DIR=\".*\"|SKILLS_DIR=\"${SKILLS_DIR_ESCAPED}\"|" "$SCRIPTS_DIR/session-start.sh"
+  echo "✅ session-start.sh: SKILLS_DIR → $SKILLS_DIR (--local)"
+fi
 
 # ── 스크립트 2: pre-tool-use.sh ──────────────────────────────
 cat > "$SCRIPTS_DIR/pre-tool-use.sh" << 'SCRIPT_EOF'

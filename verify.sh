@@ -3,12 +3,23 @@
 # Superpowers 설치 검증 스크립트
 #
 # 사용법:
-#   bash verify.sh [프로젝트 경로]
+#   bash verify.sh [프로젝트 경로] [--local]
 #   bash verify.sh .
-#   bash verify.sh ~/github/my-project
+#   bash verify.sh ~/github/my-project --local
 # ============================================================
 
 set -uo pipefail
+
+# ── 인자 파싱 ─────────────────────────────────────────────────
+LOCAL_MODE=false
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --local) LOCAL_MODE=true ;;
+    *) POSITIONAL+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL[@]}"
 
 PROJECT_DIR="${1:-$(pwd)}"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
@@ -33,41 +44,56 @@ echo ""
 echo "🦸 Superpowers 설치 검증"
 echo "========================="
 echo "   프로젝트: $PROJECT_DIR"
+$LOCAL_MODE && echo "   모드:    --local (프로젝트 로컬 검증)" || echo "   모드:    전역 검증"
 
 # ============================================================
 # [1] 공통: 스킬 디렉토리
 # ============================================================
 section "[공통] 스킬 디렉토리"
 
-COPILOT_SKILLS="$HOME/.copilot/skills"
-AGENT_SKILLS="$HOME/.agents/skills/superpowers"
-
-# Copilot 스킬 (개별 symlink 방식: ~/.copilot/skills/brainstorming/ 등)
-if [ -d "$COPILOT_SKILLS" ]; then
-  SKILL_COUNT=$(find -L "$COPILOT_SKILLS" -maxdepth 2 -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$SKILL_COUNT" -ge 14 ]; then
-    ok "Copilot 스킬 ${SKILL_COUNT}개: $COPILOT_SKILLS"
+if $LOCAL_MODE; then
+  LOCAL_SKILLS="$PROJECT_DIR/.superpowers/skills"
+  if [ -d "$LOCAL_SKILLS" ] || [ -L "$LOCAL_SKILLS" ]; then
+    SKILL_COUNT=$(find -L "$LOCAL_SKILLS" -maxdepth 2 -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$SKILL_COUNT" -ge 14 ]; then
+      ok "프로젝트 로컬 스킬 ${SKILL_COUNT}개: $LOCAL_SKILLS"
+    else
+      fail "프로젝트 로컬 스킬 ${SKILL_COUNT}개 (14개 기대): $LOCAL_SKILLS"
+      info "수정: bash install.sh copilot $PROJECT_DIR --local"
+    fi
   else
-    fail "Copilot 스킬 ${SKILL_COUNT}개 (14개 기대): $COPILOT_SKILLS"
+    fail "프로젝트 로컬 스킬 디렉토리 없음: $LOCAL_SKILLS"
+    info "수정: bash install.sh all $PROJECT_DIR --local"
+  fi
+else
+  COPILOT_SKILLS="$HOME/.copilot/skills"
+  AGENT_SKILLS="$HOME/.agents/skills/superpowers"
+
+  if [ -d "$COPILOT_SKILLS" ]; then
+    SKILL_COUNT=$(find -L "$COPILOT_SKILLS" -maxdepth 2 -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$SKILL_COUNT" -ge 14 ]; then
+      ok "Copilot 스킬 ${SKILL_COUNT}개: $COPILOT_SKILLS"
+    else
+      fail "Copilot 스킬 ${SKILL_COUNT}개 (14개 기대): $COPILOT_SKILLS"
+      info "수정: bash install-superpowers-copilot-plugin.sh"
+    fi
+  else
+    fail "Copilot 스킬 디렉토리 없음: $COPILOT_SKILLS"
     info "수정: bash install-superpowers-copilot-plugin.sh"
   fi
-else
-  fail "Copilot 스킬 디렉토리 없음: $COPILOT_SKILLS"
-  info "수정: bash install-superpowers-copilot-plugin.sh"
-fi
 
-# Cline 스킬
-if [ -d "$AGENT_SKILLS" ] || [ -L "$AGENT_SKILLS" ]; then
-  AGENT_COUNT=$(find -L "$AGENT_SKILLS" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$AGENT_COUNT" -ge 14 ]; then
-    ok "Cline 스킬 ${AGENT_COUNT}개: $AGENT_SKILLS"
+  if [ -d "$AGENT_SKILLS" ] || [ -L "$AGENT_SKILLS" ]; then
+    AGENT_COUNT=$(find -L "$AGENT_SKILLS" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$AGENT_COUNT" -ge 14 ]; then
+      ok "Cline 스킬 ${AGENT_COUNT}개: $AGENT_SKILLS"
+    else
+      fail "Cline 스킬 ${AGENT_COUNT}개 (14개 기대): $AGENT_SKILLS"
+      info "수정: ln -s $COPILOT_SKILLS $AGENT_SKILLS"
+    fi
   else
-    fail "Cline 스킬 ${AGENT_COUNT}개 (14개 기대): $AGENT_SKILLS"
+    warn "Cline 스킬 디렉토리 없음 (Cline 미사용 시 무시)"
     info "수정: ln -s $COPILOT_SKILLS $AGENT_SKILLS"
   fi
-else
-  warn "Cline 스킬 디렉토리 없음 (Cline 미사용 시 무시)"
-  info "수정: ln -s $COPILOT_SKILLS $AGENT_SKILLS"
 fi
 
 # ============================================================
@@ -75,18 +101,27 @@ fi
 # ============================================================
 section "[Copilot CLI] Plugin 설치"
 
-INSTRUCTIONS="$HOME/.copilot/copilot-instructions.md"
-AGENTS_DIR="$HOME/.copilot/agents"
-
-if [ -f "$INSTRUCTIONS" ] && grep -q "superpowers-installed" "$INSTRUCTIONS" 2>/dev/null; then
-  ok "copilot-instructions.md: superpowers 블록 있음"
+if $LOCAL_MODE; then
+  INSTRUCTIONS="$PROJECT_DIR/.superpowers/copilot-instructions.md"
+  AGENTS_COP_DIR="$PROJECT_DIR/.superpowers/agents"
 else
-  fail "copilot-instructions.md: superpowers 블록 없음"
-  info "수정: bash install-superpowers-copilot-plugin.sh"
+  INSTRUCTIONS="$HOME/.copilot/copilot-instructions.md"
+  AGENTS_COP_DIR="$HOME/.copilot/agents"
 fi
 
-if [ -f "$AGENTS_DIR/code-reviewer.md" ]; then
-  ok "code-reviewer 에이전트: $AGENTS_DIR/code-reviewer.md"
+if [ -f "$INSTRUCTIONS" ] && grep -q "superpowers-installed" "$INSTRUCTIONS" 2>/dev/null; then
+  ok "copilot-instructions.md: superpowers 블록 있음 ($INSTRUCTIONS)"
+else
+  fail "copilot-instructions.md: superpowers 블록 없음 ($INSTRUCTIONS)"
+  if $LOCAL_MODE; then
+    info "수정: bash install.sh copilot $PROJECT_DIR --local"
+  else
+    info "수정: bash install-superpowers-copilot-plugin.sh"
+  fi
+fi
+
+if [ -f "$AGENTS_COP_DIR/code-reviewer.md" ]; then
+  ok "code-reviewer 에이전트: $AGENTS_COP_DIR/code-reviewer.md"
 else
   warn "code-reviewer 에이전트 없음 (선택 사항)"
 fi
@@ -211,7 +246,11 @@ if [ -f "$SCRIPTS_DIR/session-start.sh" ] && [ -x "$SCRIPTS_DIR/session-start.sh
     ok "session-start.sh 실행 결과: SUPERPOWERS 컨텍스트 주입 확인"
   else
     fail "session-start.sh 실행 결과: 예상 출력 없음"
-    info "스킬 경로 확인: $COPILOT_SKILLS/using-superpowers/SKILL.md"
+    if $LOCAL_MODE; then
+      info "스킬 경로 확인: $PROJECT_DIR/.superpowers/skills/using-superpowers/SKILL.md"
+    else
+      info "스킬 경로 확인: $HOME/.copilot/skills/using-superpowers/SKILL.md"
+    fi
   fi
 fi
 
@@ -317,6 +356,10 @@ else
   echo "  🔧 $FAIL개 항목 수정 필요. 위 ❌ 항목의 '수정:' 안내를 따르세요."
   echo ""
   echo "  빠른 전체 재설치:"
-  echo "  bash install.sh all $PROJECT_DIR"
+  if $LOCAL_MODE; then
+    echo "  bash install.sh all $PROJECT_DIR --local"
+  else
+    echo "  bash install.sh all $PROJECT_DIR"
+  fi
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

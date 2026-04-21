@@ -2,26 +2,55 @@
 # ============================================================
 # Superpowers for OpenCode — Installer
 # 공식 plugin 방식으로 obra/superpowers 설치
+#
+# 사용법:
+#   bash install-superpowers-opencode.sh <project>            # 전역 설정 (~/.config/opencode/opencode.json)
+#   bash install-superpowers-opencode.sh <project> --local    # 프로젝트 로컬 (<project>/opencode.json)
+#   bash install-superpowers-opencode.sh uninstall <project> [--local]
 # ============================================================
 
 set -euo pipefail
 
-OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
-OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.json"
 SUPERPOWERS_PLUGIN="superpowers@git+https://github.com/obra/superpowers.git"
+
+# ── 인자 파싱 ─────────────────────────────────────────────────
+LOCAL_MODE=false
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --local) LOCAL_MODE=true ;;
+    *) POSITIONAL+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL[@]}"
+
+# ── 설정 경로 결정 (전역 vs 로컬) ────────────────────────────
+# 실제 경로는 TARGET_PROJECT가 확정된 뒤에 설정합니다.
+resolve_config_path() {
+  if $LOCAL_MODE; then
+    OPENCODE_CONFIG="$TARGET_PROJECT/opencode.json"
+    OPENCODE_CONFIG_DIR="$TARGET_PROJECT"
+  else
+    OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+    OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.json"
+  fi
+}
 
 # ── uninstall 처리 ───────────────────────────────────────────
 if [ "${1:-}" = "uninstall" ]; then
   if [ -z "${2:-}" ]; then
     echo "❌ 제거할 프로젝트 경로를 지정해야 합니다."
-    echo "   사용법: bash $(basename "$0") uninstall /path/to/project"
+    echo "   사용법: bash $(basename "$0") uninstall /path/to/project [--local]"
     exit 1
   fi
   TARGET_PROJECT="$(cd "$2" && pwd)"
+  resolve_config_path
+
   echo ""
   echo "🗑️  Superpowers for OpenCode — 제거"
   echo "====================================="
   echo "   프로젝트: $TARGET_PROJECT"
+  $LOCAL_MODE && echo "   모드:    --local ($OPENCODE_CONFIG)" || echo "   모드:    전역 ($OPENCODE_CONFIG)"
   echo ""
 
   if [ -f "$OPENCODE_CONFIG" ]; then
@@ -38,6 +67,19 @@ with open('$OPENCODE_CONFIG', 'w') as f:
     f.write('\n')
 print('✅ opencode.json에서 superpowers plugin 제거')
 "
+    # 로컬 모드에서 파일이 사실상 비어있으면 삭제
+    if $LOCAL_MODE; then
+      if python3 -c "
+import json,sys
+with open('$OPENCODE_CONFIG') as f:
+    d = json.load(f)
+# \$schema만 남았거나 완전히 비어있으면 cleanup 대상
+keys = [k for k in d.keys() if k != '\$schema']
+sys.exit(0 if not keys else 1)
+" 2>/dev/null; then
+        rm -f "$OPENCODE_CONFIG" && echo "✅ 삭제: $OPENCODE_CONFIG (빈 설정)"
+      fi
+    fi
   fi
 
   rm -f  "$TARGET_PROJECT/AGENTS.md" && echo "✅ 삭제: AGENTS.md" || true
@@ -50,16 +92,18 @@ fi
 
 if [ -z "${1:-}" ]; then
   echo "❌ 프로젝트 경로를 지정해야 합니다."
-  echo "   설치: bash $(basename "$0") /path/to/project"
-  echo "   제거: bash $(basename "$0") uninstall /path/to/project"
+  echo "   설치: bash $(basename "$0") /path/to/project [--local]"
+  echo "   제거: bash $(basename "$0") uninstall /path/to/project [--local]"
   exit 1
 fi
 TARGET_PROJECT="$(cd "$1" && pwd)"
+resolve_config_path
 
 echo ""
 echo "🦸 Superpowers for OpenCode — Installer"
 echo "========================================="
 echo "   프로젝트: $TARGET_PROJECT"
+$LOCAL_MODE && echo "   모드:    --local ($OPENCODE_CONFIG)" || echo "   모드:    전역 ($OPENCODE_CONFIG)"
 echo ""
 
 # ── Step 1: opencode.json에 plugin 추가 ──────────────────────
@@ -72,12 +116,12 @@ if [ -f "$OPENCODE_CONFIG" ]; then
   echo "✅ 백업: ${OPENCODE_CONFIG}.bak"
 fi
 
-python3 << 'PYTHON_SCRIPT'
+CONFIG_PATH="$OPENCODE_CONFIG" PLUGIN_ENTRY="$SUPERPOWERS_PLUGIN" python3 << 'PYTHON_SCRIPT'
 import json
 import os
 
-config_path = os.path.expanduser("~/.config/opencode/opencode.json")
-plugin_entry = "superpowers@git+https://github.com/obra/superpowers.git"
+config_path = os.environ["CONFIG_PATH"]
+plugin_entry = os.environ["PLUGIN_ENTRY"]
 
 if os.path.exists(config_path):
     with open(config_path, 'r') as f:
@@ -136,6 +180,10 @@ GITIGNORE_ENTRIES=(
   "docs/superpowers/.gitkeep"
   "/AGENTS.md"
 )
+# 로컬 모드에서는 프로젝트 루트 opencode.json도 .gitignore 후보 (팀 공유 여부는 사용자 선택)
+if $LOCAL_MODE; then
+  GITIGNORE_ENTRIES+=("/opencode.json")
+fi
 
 if [ -f "$GITIGNORE" ]; then
   if ! grep -qF "# BEGIN superpowers-opencode" "$GITIGNORE" 2>/dev/null; then
@@ -159,10 +207,21 @@ echo "🎉 Superpowers for OpenCode 설치 완료!"
 echo ""
 echo "   설정:    $OPENCODE_CONFIG"
 echo "   프로젝트: $TARGET_PROJECT"
+if $LOCAL_MODE; then
+  echo "   모드:    프로젝트 로컬 (\$HOME 변경 없음)"
+  echo ""
+  echo "   ℹ️  OpenCode는 프로젝트 루트의 opencode.json을 자동 인식합니다."
+  echo "      팀 공유가 필요하면 opencode.json을 git에 포함시키고,"
+  echo "      개인 전용이면 .gitignore의 /opencode.json 항목을 유지하세요."
+fi
 echo ""
 echo "   다음 단계:"
 echo "   1. OpenCode 재시작"
 echo "   2. 확인: 'Tell me about your superpowers'"
 echo ""
 echo "   제거 방법:"
-echo "   bash $(basename "$0") uninstall $TARGET_PROJECT"
+if $LOCAL_MODE; then
+  echo "   bash $(basename "$0") uninstall $TARGET_PROJECT --local"
+else
+  echo "   bash $(basename "$0") uninstall $TARGET_PROJECT"
+fi

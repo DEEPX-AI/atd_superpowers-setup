@@ -130,6 +130,47 @@ bash uninstall.sh all    /path/to/project --with-plugin
 
 ---
 
+## 프로젝트 로컬 설치 (`--local`)
+
+`$HOME`(전역)에 아무것도 설치하지 않고 **대상 프로젝트 내부에만** 설치하는 모드입니다.
+격리된 환경(데모/샌드박스/VM/팀 공유 리포)에 유용합니다.
+
+```bash
+# 전부 로컬로 설치
+bash install.sh all /path/to/project --local
+
+# Copilot만 로컬로
+bash install.sh copilot /path/to/project --local
+
+# 로컬 설치 제거
+bash uninstall.sh all /path/to/project --local
+
+# 로컬 설치 검증
+bash verify.sh /path/to/project --local
+```
+
+### 전역 vs 로컬 비교
+
+| 항목 | 전역 (기본) | 로컬 (`--local`) |
+|---|---|---|
+| 스킬 저장 위치 | `~/.copilot/skills/`, `~/.agents/skills/superpowers/` | `<project>/.superpowers/skills/` |
+| git 캐시 | `~/.copilot/marketplace-cache/`, `~/.copilot/marketplace-cache/superpowers-raw/` | `<project>/.superpowers/cache/` |
+| Copilot 지시문 | `~/.copilot/copilot-instructions.md` | `<project>/.superpowers/copilot-instructions.md` |
+| code-reviewer 에이전트 | `~/.copilot/agents/code-reviewer.md` | `<project>/.superpowers/agents/code-reviewer.md` |
+| OpenCode 플러그인 | `~/.config/opencode/opencode.json` | `<project>/opencode.json` |
+| `$HOME` 변경 | 있음 (다른 프로젝트와 공유됨) | **없음** (완전 격리) |
+| 디스크 사용량 | 프로젝트당 거의 0 (심볼릭 링크) | 프로젝트당 스킬 저장소 1벌 |
+| 팀 공유 용이성 | 개인 설정 (개인별 재실행 필요) | `<project>/opencode.json`과 규약을 commit 가능 |
+
+### 제약 사항
+
+- **Copilot CLI/VS Code의 `copilot-instructions.md` 자동 로딩**은 `$HOME` 기준이므로, 로컬 모드에선 세션 컨텍스트 주입이 전적으로 `.github/hooks/session-start.sh`에 의존합니다. (해당 훅은 `--local` 설치 시 자동으로 로컬 스킬 경로를 바라보도록 치환됩니다.)
+- **Cline**의 `.clinerules`는 `~/.agents/skills/superpowers/` 경로 참조가 `.superpowers/skills/` 상대경로로 자동 치환됩니다.
+- **OpenCode**는 프로젝트 루트의 `opencode.json`을 자동 인식합니다. 팀과 공유하려면 commit, 개인 전용이면 기본으로 추가되는 `.gitignore` 항목을 유지하세요.
+- 전역 설치가 이미 있어도 `--local`은 독립적으로 추가됩니다 (둘이 공존 가능).
+
+---
+
 ## 폴더 구성
 
 ### [`superpowers-cline/`](superpowers-cline/README.md)

@@ -23,12 +23,23 @@
 
 set -euo pipefail
 
+# ── 인자 파싱 (--local 분리) ──────────────────────────────────
+LOCAL_MODE=false
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --local) LOCAL_MODE=true ;;
+    *) POSITIONAL+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL[@]}"
+
 COMMAND="${1:-}"
 
 if [ "$COMMAND" = "uninstall" ]; then
   if [ -z "${2:-}" ]; then
     echo "❌ 제거할 프로젝트 경로를 지정해야 합니다."
-    echo "   사용법: bash $(basename "$0") uninstall /path/to/project"
+    echo "   사용법: bash $(basename "$0") uninstall /path/to/project [--local]"
     exit 1
   fi
   PROJECT_DIR="$(cd "$2" && pwd)"
@@ -52,24 +63,33 @@ fi
 
 if [ -z "$COMMAND" ]; then
   echo "❌ 프로젝트 경로를 지정해야 합니다."
-  echo "   설치: bash $(basename "$0") /path/to/project"
-  echo "   제거: bash $(basename "$0") uninstall /path/to/project"
+  echo "   설치: bash $(basename "$0") /path/to/project [--local]"
+  echo "   제거: bash $(basename "$0") uninstall /path/to/project [--local]"
   exit 1
 fi
 PROJECT_DIR="$(cd "$1" && pwd)"
 EXTENSIONS_DIR="$PROJECT_DIR/.github/extensions/superpowers-enforcer"
-SKILLS_DIR="$HOME/.copilot/skills"
+if $LOCAL_MODE; then
+  SKILLS_DIR="$PROJECT_DIR/.superpowers/skills"
+else
+  SKILLS_DIR="$HOME/.copilot/skills"
+fi
 
 echo ""
 echo "🦸 Superpowers Hook 강제화 — Extension 설치"
 echo "============================================"
 echo "   프로젝트: $PROJECT_DIR"
+$LOCAL_MODE && echo "   모드:    --local ($SKILLS_DIR)" || echo "   모드:    전역 ($SKILLS_DIR)"
 echo ""
 
 # ── 사전 조건 확인 ──────────────────────────────────────────
 if [ ! -d "$SKILLS_DIR" ]; then
-  echo "❌ 스킬이 설치되어 있지 않습니다."
-  echo "   먼저 실행: bash install-superpowers-copilot-plugin.sh"
+  echo "❌ 스킬이 설치되어 있지 않습니다: $SKILLS_DIR"
+  if $LOCAL_MODE; then
+    echo "   먼저 실행: bash install-superpowers-copilot-plugin.sh $PROJECT_DIR --local"
+  else
+    echo "   먼저 실행: bash install-superpowers-copilot-plugin.sh"
+  fi
   exit 1
 fi
 
@@ -672,6 +692,30 @@ await session.log("🦸 [EXTENSION] Superpowers Enforcer 준비 완료 | 커스�
 EXTENSION_EOF
 
 echo "✅ extension.mjs 생성: $EXTENSIONS_DIR/extension.mjs"
+
+# ── 로컬 모드: SKILLS_BASE 경로를 프로젝트 내부로 치환 ───────
+if $LOCAL_MODE; then
+  # extension.mjs 내부의 SKILLS_BASE 라인을 프로젝트 .superpowers/skills 로 교체
+  # extension.mjs 위치: <project>/.github/extensions/superpowers-enforcer/
+  # 스킬 위치:        <project>/.superpowers/skills/
+  # → import.meta.dirname 기준 상대경로: ../../../.superpowers/skills
+  python3 - "$EXTENSIONS_DIR/extension.mjs" << 'PY_EOF'
+import sys, re, pathlib
+p = pathlib.Path(sys.argv[1])
+src = p.read_text()
+new = re.sub(
+    r'const\s+SKILLS_BASE\s*=\s*join\([^)]*\);',
+    'const SKILLS_BASE = join(import.meta.dirname ?? ".", "..", "..", "..", ".superpowers", "skills");',
+    src,
+    count=1,
+)
+if new == src:
+    print("⚠️  SKILLS_BASE 치환 실패 (패턴 미일치). 수동 확인 필요.", file=sys.stderr)
+    sys.exit(1)
+p.write_text(new)
+print("✅ SKILLS_BASE 경로 치환 → <project>/.superpowers/skills (--local)")
+PY_EOF
+fi
 
 # ── config.json 생성 ─────────────────────────────────────────
 echo ""
