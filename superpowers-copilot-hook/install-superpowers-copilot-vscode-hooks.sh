@@ -25,10 +25,12 @@ set -euo pipefail
 
 # ── 인자 파싱 (--local 분리) ──────────────────────────────────
 LOCAL_MODE=false
+FORCE_MODE=false
 POSITIONAL=()
 for arg in "$@"; do
   case "$arg" in
     --local) LOCAL_MODE=true ;;
+    --force|-f) FORCE_MODE=true ;;
     *) POSITIONAL+=("$arg") ;;
   esac
 done
@@ -88,6 +90,23 @@ fi
 PROJECT_DIR="$(cd "$1" && pwd)"
 HOOKS_DIR="$PROJECT_DIR/.github/hooks"
 SCRIPTS_DIR="$HOOKS_DIR/scripts"
+
+# ── 이미 설치 감지 ───────────────────────────────────────────
+if [ -f "$HOOKS_DIR/hooks.json" ]; then
+  if ! $FORCE_MODE; then
+    echo "" >&2
+    echo "❌ 이미 설치 되었습니다. 이전 설치 내용을 삭제후 재설치 하려면 --force|-f 옵션을 사용해주세요" >&2
+    echo "   감지: $HOOKS_DIR/hooks.json" >&2
+    exit 1
+  fi
+  echo ""
+  echo "⚠️  --force 지정됨. 기존 설치 제거 후 재설치합니다."
+  UNINSTALL_ARGS=(uninstall "$PROJECT_DIR")
+  $LOCAL_MODE && UNINSTALL_ARGS+=(--local)
+  bash "$0" "${UNINSTALL_ARGS[@]}" < /dev/null
+  echo ""
+fi
+
 if $LOCAL_MODE; then
   SKILLS_DIR="$PROJECT_DIR/.superpowers/skills"
 else

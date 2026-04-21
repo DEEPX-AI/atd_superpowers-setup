@@ -25,10 +25,12 @@ set -euo pipefail
 
 # ── 인자 파싱 ─────────────────────────────────────────────────
 LOCAL_MODE=false
+FORCE_MODE=false
 POSITIONAL=()
 for arg in "$@"; do
   case "$arg" in
     --local) LOCAL_MODE=true ;;
+    --force|-f) FORCE_MODE=true ;;
     *) POSITIONAL+=("$arg") ;;
   esac
 done
@@ -83,6 +85,20 @@ if [ "${1:-}" = "uninstall" ]; then
       rm -rf "$COPILOT_DIR" && echo "✅ 삭제: $COPILOT_DIR"
     else
       echo "ℹ️  $COPILOT_DIR — 없음 (이미 제거됨)"
+    fi
+    # .gitignore 섹션 정리
+    GITIGNORE="$TARGET_PROJECT/.gitignore"
+    if [ -f "$GITIGNORE" ] && grep -qF "# BEGIN superpowers-copilot-plugin" "$GITIGNORE" 2>/dev/null; then
+      GITIGNORE="$GITIGNORE" python3 -c "
+import os, re
+p = os.environ['GITIGNORE']
+with open(p, 'r') as f:
+    content = f.read()
+content = re.sub(r'\n?# BEGIN superpowers-copilot-plugin\n.*?# END superpowers-copilot-plugin\n?', '\n', content, flags=re.DOTALL)
+with open(p, 'w') as f:
+    f.write(content)
+"
+      echo "✅ .gitignore에서 superpowers-copilot-plugin 섹션 제거"
     fi
     echo ""
     echo "✅ Superpowers for Copilot (local) 제거 완료"
@@ -148,6 +164,31 @@ if $LOCAL_MODE; then
   TARGET_PROJECT="$(cd "$1" && pwd)"
 fi
 resolve_paths
+
+# ── 이미 설치 감지 ───────────────────────────────────────────
+_detect_plugin_installed() {
+  if $LOCAL_MODE; then
+    [ -f "$INSTRUCTIONS_FILE" ]
+  else
+    [ -f "$INSTRUCTIONS_FILE" ] && grep -qF "superpowers-installed" "$INSTRUCTIONS_FILE" 2>/dev/null
+  fi
+}
+if _detect_plugin_installed; then
+  if ! $FORCE_MODE; then
+    echo "" >&2
+    echo "❌ 이미 설치 되었습니다. 이전 설치 내용을 삭제후 재설치 하려면 --force|-f 옵션을 사용해주세요" >&2
+    echo "   감지: $INSTRUCTIONS_FILE" >&2
+    exit 1
+  fi
+  echo ""
+  echo "⚠️  --force 지정됨. 기존 설치 제거 후 재설치합니다."
+  if $LOCAL_MODE; then
+    bash "$0" uninstall "$TARGET_PROJECT" --local < /dev/null
+  else
+    bash "$0" uninstall < /dev/null
+  fi
+  echo ""
+fi
 
 echo ""
 echo "🦸 Superpowers for GitHub Copilot CLI — Installer"
@@ -268,6 +309,41 @@ and code comments should be in Korean. Code identifiers (variable names, functio
 remain in English.
 INSTRUCTIONS
   echo "✅ copilot-instructions.md 업데이트 완료"
+fi
+
+# ── Step 5 (--local 전용): .gitignore 업데이트 ───────────────
+if $LOCAL_MODE; then
+  GITIGNORE="$TARGET_PROJECT/.gitignore"
+  GITIGNORE_ENTRIES=(
+    "/.superpowers/skills"
+    "/.superpowers/cache/"
+    "/.superpowers/agents/code-reviewer.md"
+    "/.superpowers/copilot-instructions.md"
+  )
+
+  echo ""
+  echo "🔒 .gitignore 업데이트 중..."
+
+  if ! grep -qF "# BEGIN superpowers-copilot-plugin" "$GITIGNORE" 2>/dev/null; then
+    {
+      echo ""
+      echo "# BEGIN superpowers-copilot-plugin"
+      for entry in "${GITIGNORE_ENTRIES[@]}"; do
+        echo "$entry"
+      done
+      echo "# END superpowers-copilot-plugin"
+    } >> "$GITIGNORE"
+    echo "✅ .gitignore에 superpowers-copilot-plugin 섹션 추가"
+  else
+    for entry in "${GITIGNORE_ENTRIES[@]}"; do
+      if grep -qF "$entry" "$GITIGNORE" 2>/dev/null; then
+        echo "✅ .gitignore 이미 포함: $entry"
+      else
+        sed -i "/# END superpowers-copilot-plugin/i $entry" "$GITIGNORE"
+        echo "✅ .gitignore 추가: $entry"
+      fi
+    done
+  fi
 fi
 
 # ── 완료 ──────────────────────────────────────────────────────

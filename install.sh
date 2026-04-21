@@ -3,14 +3,14 @@
 # Superpowers Setup — 통합 설치 스크립트
 #
 # 사용법:
-#   bash install.sh all      <project> [--local]   # Cline + Copilot + OpenCode 모두 설치
-#   bash install.sh cline    <project> [--local]   # Cline만 설치
-#   bash install.sh copilot  <project> [--local]   # Copilot (plugin + CLI hook + VS Code hook)
-#   bash install.sh opencode <project> [--local]   # OpenCode만 설치
+#   bash install.sh all      <project> [--local] [--force|-f]
+#   bash install.sh cline    <project> [--local] [--force|-f]
+#   bash install.sh copilot  <project> [--local] [--force|-f]
+#   bash install.sh opencode <project> [--local] [--force|-f]
 #
-# <project>: 설치 대상 프로젝트 경로 (필수)
-# --local:   전역($HOME) 설치 없이 프로젝트 내부에만 설치
-#            스킬·플러그인·캐시를 모두 <project>/.superpowers/ 하위에 배치
+# <project>:     설치 대상 프로젝트 경로 (필수)
+# --local:       전역($HOME) 설치 없이 프로젝트 내부에만 설치
+# --force, -f:   이미 설치되어 있어도 삭제 후 재설치
 # ============================================================
 
 set -euo pipefail
@@ -27,23 +27,26 @@ OPENCODE_INSTALL="$SCRIPT_DIR/superpowers-opencode/install-superpowers-opencode.
 usage() {
   echo ""
   echo "사용법:"
-  echo "  bash $(basename "$0") all      /path/to/project [--local]   # Cline + Copilot + OpenCode 모두 설치"
-  echo "  bash $(basename "$0") cline    /path/to/project [--local]   # Cline만 설치"
-  echo "  bash $(basename "$0") copilot  /path/to/project [--local]   # Copilot 설치"
-  echo "  bash $(basename "$0") opencode /path/to/project [--local]   # OpenCode만 설치"
+  echo "  bash $(basename "$0") all      /path/to/project [--local] [--force|-f]"
+  echo "  bash $(basename "$0") cline    /path/to/project [--local] [--force|-f]"
+  echo "  bash $(basename "$0") copilot  /path/to/project [--local] [--force|-f]"
+  echo "  bash $(basename "$0") opencode /path/to/project [--local] [--force|-f]"
   echo ""
   echo "옵션:"
-  echo "  --local  전역(\$HOME) 설치 없이 <project>/.superpowers/ 하위에만 설치"
+  echo "  --local       전역(\$HOME) 설치 없이 <project>/.superpowers/ 하위에만 설치"
+  echo "  --force, -f   이미 설치되어 있어도 이전 설치를 삭제 후 재설치"
   echo ""
   exit 1
 }
 
-# ── 인자 파싱 (--local 플래그 분리) ───────────────────────────
+# ── 인자 파싱 ─────────────────────────────────────────────────
 LOCAL_MODE=false
+FORCE_MODE=false
 POSITIONAL=()
 for arg in "$@"; do
   case "$arg" in
     --local) LOCAL_MODE=true ;;
+    --force|-f) FORCE_MODE=true ;;
     -h|--help) usage ;;
     *) POSITIONAL+=("$arg") ;;
   esac
@@ -70,9 +73,113 @@ fi
 
 PROJECT="$(cd "$PROJECT" && pwd)"
 
-# --local 플래그를 하위 스크립트 인자로 전달하기 위한 배열
+# --local 플래그를 하위 스크립트 인자로 전달
 LOCAL_ARGS=()
 $LOCAL_MODE && LOCAL_ARGS+=(--local)
+
+# --force 플래그도 하위 스크립트로 전달
+FORCE_ARGS=()
+$FORCE_MODE && FORCE_ARGS+=(--force)
+
+UNINSTALL_SH="$SCRIPT_DIR/uninstall.sh"
+
+# ── 기존 설치 감지 ────────────────────────────────────────────
+# 각 함수는 "이미 설치되어 있으면 0", 아니면 1을 반환.
+detect_cline_installed() {
+  [ -f "$PROJECT/.clinerules" ] && grep -qF "superpowers-installed" "$PROJECT/.clinerules" 2>/dev/null
+}
+
+detect_opencode_installed() {
+  local cfg
+  if $LOCAL_MODE; then
+    cfg="$PROJECT/opencode.json"
+  else
+    cfg="$HOME/.config/opencode/opencode.json"
+  fi
+  [ -f "$cfg" ] && grep -qE '"superpowers(@|-)' "$cfg" 2>/dev/null
+}
+
+detect_copilot_plugin_installed() {
+  if $LOCAL_MODE; then
+    [ -f "$PROJECT/.superpowers/copilot-instructions.md" ]
+  else
+    [ -f "$HOME/.copilot/copilot-instructions.md" ] && \
+      grep -qF "superpowers-installed" "$HOME/.copilot/copilot-instructions.md" 2>/dev/null
+  fi
+}
+
+detect_copilot_cli_ext_installed() {
+  [ -f "$PROJECT/.github/extensions/superpowers-enforcer/extension.mjs" ]
+}
+
+detect_copilot_vscode_hooks_installed() {
+  [ -f "$PROJECT/.github/hooks/hooks.json" ]
+}
+
+# 컴포넌트명을 받아 감지 결과를 (라벨) 배열로 수집
+# 주의: set -e 아래에서 detect_X && ... 복합 명령이 실패(감지 안 됨)를 반환하면
+# 함수 전체가 종료될 수 있으므로 || true로 감싼다.
+collect_installed_components() {
+  local target="$1"
+  INSTALLED_LABELS=()
+  case "$target" in
+    all)
+      detect_cline_installed && INSTALLED_LABELS+=("cline (.clinerules)") || true
+      detect_copilot_plugin_installed && INSTALLED_LABELS+=("copilot plugin") || true
+      detect_copilot_cli_ext_installed && INSTALLED_LABELS+=("copilot cli-extension") || true
+      detect_copilot_vscode_hooks_installed && INSTALLED_LABELS+=("copilot vscode-hooks") || true
+      detect_opencode_installed && INSTALLED_LABELS+=("opencode") || true
+      ;;
+    cline)
+      detect_cline_installed && INSTALLED_LABELS+=("cline (.clinerules)") || true
+      ;;
+    copilot)
+      detect_copilot_plugin_installed && INSTALLED_LABELS+=("copilot plugin") || true
+      detect_copilot_cli_ext_installed && INSTALLED_LABELS+=("copilot cli-extension") || true
+      detect_copilot_vscode_hooks_installed && INSTALLED_LABELS+=("copilot vscode-hooks") || true
+      ;;
+    opencode)
+      detect_opencode_installed && INSTALLED_LABELS+=("opencode") || true
+      ;;
+  esac
+}
+
+# 기존 설치가 감지되면 거부(종료)하거나 --force 시 uninstall 수행
+handle_existing_installation() {
+  collect_installed_components "$COMMAND"
+  if [ ${#INSTALLED_LABELS[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  if ! $FORCE_MODE; then
+    echo "" >&2
+    echo "❌ 이미 설치 되었습니다. 이전 설치 내용을 삭제후 재설치 하려면 --force|-f 옵션을 사용해주세요" >&2
+    echo "" >&2
+    echo "   감지된 설치 항목:" >&2
+    for label in "${INSTALLED_LABELS[@]}"; do
+      echo "   - $label" >&2
+    done
+    echo "" >&2
+    echo "   재설치 예:" >&2
+    if $LOCAL_MODE; then
+      echo "     bash $(basename "$0") $COMMAND $PROJECT --local --force" >&2
+    else
+      echo "     bash $(basename "$0") $COMMAND $PROJECT --force" >&2
+    fi
+    echo "" >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "⚠️  --force 지정됨. 기존 설치를 먼저 제거합니다."
+  echo "   감지 항목: ${INSTALLED_LABELS[*]}"
+  echo ""
+  bash "$UNINSTALL_SH" "$COMMAND" "$PROJECT" "${LOCAL_ARGS[@]}"
+  echo ""
+  echo "✅ 기존 설치 제거 완료. 재설치를 진행합니다."
+}
+
+handle_existing_installation
 
 # ── 설치 함수 ─────────────────────────────────────────────────
 install_cline() {

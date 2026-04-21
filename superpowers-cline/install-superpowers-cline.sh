@@ -13,10 +13,12 @@ set -e
 
 # ── 인자 파싱 ─────────────────────────────────────────────────
 LOCAL_MODE=false
+FORCE_MODE=false
 POSITIONAL=()
 for arg in "$@"; do
   case "$arg" in
     --local) LOCAL_MODE=true ;;
+    --force|-f) FORCE_MODE=true ;;
     *) POSITIONAL+=("$arg") ;;
   esac
 done
@@ -133,6 +135,22 @@ if [ -z "$COMMAND" ]; then
 fi
 TARGET_PROJECT="$(cd "$1" && pwd)"
 resolve_paths
+
+# ── 이미 설치 감지 ───────────────────────────────────────────
+if [ -f "$TARGET_PROJECT/.clinerules" ] && grep -qF "superpowers-installed" "$TARGET_PROJECT/.clinerules" 2>/dev/null; then
+  if ! $FORCE_MODE; then
+    echo "" >&2
+    echo "❌ 이미 설치 되었습니다. 이전 설치 내용을 삭제후 재설치 하려면 --force|-f 옵션을 사용해주세요" >&2
+    echo "   감지: $TARGET_PROJECT/.clinerules 에 superpowers-installed sentinel 존재" >&2
+    exit 1
+  fi
+  echo ""
+  echo "⚠️  --force 지정됨. 기존 설치 제거 후 재설치합니다."
+  UNINSTALL_ARGS=(uninstall "$TARGET_PROJECT")
+  $LOCAL_MODE && UNINSTALL_ARGS+=(--local)
+  bash "$0" "${UNINSTALL_ARGS[@]}" < /dev/null
+  echo ""
+fi
 
 echo ""
 echo "🦸 Superpowers for Cline — Installer"
